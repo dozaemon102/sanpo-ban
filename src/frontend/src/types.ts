@@ -64,3 +64,46 @@ export interface WeekSummary {
     strength_sessions: number;
   };
 }
+
+export interface MealLog {
+  id: number;
+  log_date: string;
+  name: string;
+  kcal: number;
+  protein_g: number;
+  fat_g: number;
+  carbs_g: number;
+  food_preset_id: number | null;
+  logged_at: string;
+}
+
+export interface WalkSession {
+  id: number;
+  walked_at: string;
+  discovery_note: string | null;
+}
+
+export interface TreadmillLog {
+  id: number;
+  minutes: number;
+  speed_kmh: number | null;
+  incline_pct: number | null;
+  machine_kcal: number | null;
+  logged_at: string;
+  calculated_kcal: number;
+}
+
+export interface StrengthLog {
+  id: number;
+  exercise_code: string;
+  minutes: number;
+  logged_at: string;
+  calculated_kcal: number;
+}
+
+export interface WeightLog {
+  id: number;
+  weight_kg: number;
+  source: string;
+  logged_at: string;
+}

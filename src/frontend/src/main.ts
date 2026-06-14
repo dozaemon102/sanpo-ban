@@ -11,6 +11,30 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+}
+
+function recordDate(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+function bindDeleteButtons(
+  selector: string,
+  onDelete: (id: number) => Promise<void>,
+  rerender: () => Promise<void>
+): void {
+  document.querySelectorAll(selector).forEach((el) => {
+    el.addEventListener("click", async () => {
+      const id = Number((el as HTMLElement).dataset.deleteId);
+      if (!Number.isFinite(id)) return;
+      if (!confirm("この記録を削除しますか？")) return;
+      await onDelete(id);
+      await rerender();
+    });
+  });
+}
+
 async function ensureProfile(): Promise<boolean> {
   try {
     const p = await api.getProfile();
@@ -86,7 +110,7 @@ function renderTabs(): string {
     .join("")}</nav>`;
 }
 
-function renderDashboard(d: DashboardToday): string {
+function renderDashboard(d: DashboardToday, todayWeightsHtml = ""): string {
   return `
     <div class="page">
       <h1 class="page-title">今日</h1>
@@ -108,6 +132,7 @@ function renderDashboard(d: DashboardToday): string {
         <div class="stat-lg">${d.steps.toLocaleString()} 歩</div>
         <div>${d.weight_kg != null ? `${d.weight_kg} kg` : "—"} · 散歩 ${d.walk_sessions_today} 回</div>
       </div>
+      ${todayWeightsHtml}
       <button class="btn btn-primary fab" id="walk-fab">散歩した</button>
     </div>
     ${renderTabs()}
@@ -115,22 +140,44 @@ function renderDashboard(d: DashboardToday): string {
 }
 
 async function renderToday(): Promise<void> {
-  const d = await api.getDashboard();
-  app.innerHTML = renderDashboard(d);
+  const date = todayIso();
+  const [d, weights] = await Promise.all([api.getDashboard(), api.getWeights()]);
+  const todayWeights = weights.filter((w) => recordDate(w.logged_at) === date);
+  const todayWeightsHtml = todayWeights.length
+    ? `
+      <div class="card">
+        <div class="stat-label">今日の体重記録（削除可）</div>
+        ${todayWeights
+          .map(
+            (w) => `
+          <div class="list-row">
+            <div class="list-row-main">
+              <strong>${w.weight_kg} kg</strong>
+              <span class="muted"> · ${formatTime(w.logged_at)} · ${w.source}</span>
+            </div>
+            <button type="button" class="btn-delete" data-delete-id="${w.id}" data-delete-kind="weight">削除</button>
+          </div>`
+          )
+          .join("")}
+      </div>`
+    : "";
+  app.innerHTML = renderDashboard(d, todayWeightsHtml);
   bindTabs();
   document.getElementById("walk-fab")!.addEventListener("click", async () => {
     const note = prompt("発見メモ（任意）") ?? undefined;
     await api.recordWalk(note);
     await renderToday();
   });
+  bindDeleteButtons('[data-delete-kind="weight"]', api.deleteWeight, renderToday);
 }
 
 async function renderMeals(): Promise<void> {
-  const presets = await api.getPresets();
+  const date = todayIso();
+  const [presets, meals] = await Promise.all([api.getPresets(), api.getMeals(date)]);
   app.innerHTML = `
     <div class="page">
       <h1 class="page-title">食事</h1>
-      <p class="muted">定番をタップで記録（${todayIso()}）</p>
+      <p class="muted">定番をタップで記録（${date}）</p>
       <div class="preset-grid">
         ${
           presets.length
@@ -143,24 +190,65 @@ async function renderMeals(): Promise<void> {
             : `<p class="muted">プリセットがありません。API から追加してください。</p>`
         }
       </div>
+      <div class="card" style="margin-top:16px">
+        <div class="stat-label">今日の記録</div>
+        ${
+          meals.length
+            ? meals
+                .map(
+                  (m) => `
+            <div class="list-row">
+              <div class="list-row-main">
+                <strong>${m.name}</strong>
+                <span class="muted"> · ${formatTime(m.logged_at)} · ${m.kcal} kcal</span>
+              </div>
+              <button type="button" class="btn-delete" data-delete-id="${m.id}" data-delete-kind="meal">削除</button>
+            </div>`
+                )
+                .join("")
+            : `<p class="muted">まだ記録がありません</p>`
+        }
+      </div>
     </div>
     ${renderTabs()}
   `;
   bindTabs();
   presets.forEach((p) => {
     document.querySelector(`[data-id="${p.id}"]`)!.addEventListener("click", async () => {
-      await api.addMealFromPreset(p, todayIso());
-      alert("記録しました");
+      await api.addMealFromPreset(p, date);
+      await renderMeals();
     });
   });
+  bindDeleteButtons('[data-delete-kind="meal"]', api.deleteMeal, renderMeals);
 }
 
 async function renderWalks(): Promise<void> {
+  const date = todayIso();
+  const walks = (await api.getWalks()).filter((w) => recordDate(w.walked_at) === date);
   app.innerHTML = `
     <div class="page">
       <h1 class="page-title">散歩</h1>
       <button class="btn btn-primary btn-block" id="walk-btn">散歩した</button>
       <p class="muted" style="margin-top:12px">iPhone の歩数はショートカットで自動同期されます。</p>
+      <div class="card" style="margin-top:16px">
+        <div class="stat-label">今日の散歩</div>
+        ${
+          walks.length
+            ? walks
+                .map(
+                  (w) => `
+            <div class="list-row">
+              <div class="list-row-main">
+                <strong>${formatTime(w.walked_at)}</strong>
+                <span class="muted">${w.discovery_note ? ` · ${w.discovery_note}` : ""}</span>
+              </div>
+              <button type="button" class="btn-delete" data-delete-id="${w.id}" data-delete-kind="walk">削除</button>
+            </div>`
+                )
+                .join("")
+            : `<p class="muted">まだ記録がありません</p>`
+        }
+      </div>
     </div>
     ${renderTabs()}
   `;
@@ -168,12 +256,19 @@ async function renderWalks(): Promise<void> {
   document.getElementById("walk-btn")!.addEventListener("click", async () => {
     const note = prompt("発見メモ（任意）") ?? undefined;
     await api.recordWalk(note);
-    alert("記録しました");
+    await renderWalks();
   });
+  bindDeleteButtons('[data-delete-kind="walk"]', api.deleteWalk, renderWalks);
 }
 
 async function renderExercise(): Promise<void> {
-  const templates = await api.getStrengthTemplates();
+  const date = todayIso();
+  const [templates, treadmill, strength] = await Promise.all([
+    api.getStrengthTemplates(),
+    api.getTreadmillLogs(date),
+    api.getStrengthLogs(date),
+  ]);
+  const templateNames = Object.fromEntries(templates.map((t) => [t.code, t.name]));
   app.innerHTML = `
     <div class="page">
       <h1 class="page-title">運動</h1>
@@ -191,6 +286,44 @@ async function renderExercise(): Promise<void> {
         <div class="field"><label>分数</label><input id="st-min" type="number" value="45" /></div>
         <button class="btn btn-primary btn-block" id="st-btn">記録</button>
       </div>
+      <div class="card">
+        <div class="stat-label">今日のトレッドミル</div>
+        ${
+          treadmill.length
+            ? treadmill
+                .map(
+                  (t) => `
+            <div class="list-row">
+              <div class="list-row-main">
+                <strong>${t.minutes} 分</strong>
+                <span class="muted"> · ${formatTime(t.logged_at)} · ${t.calculated_kcal} kcal</span>
+              </div>
+              <button type="button" class="btn-delete" data-delete-id="${t.id}" data-delete-kind="treadmill">削除</button>
+            </div>`
+                )
+                .join("")
+            : `<p class="muted">まだ記録がありません</p>`
+        }
+      </div>
+      <div class="card">
+        <div class="stat-label">今日の筋トレ</div>
+        ${
+          strength.length
+            ? strength
+                .map(
+                  (s) => `
+            <div class="list-row">
+              <div class="list-row-main">
+                <strong>${templateNames[s.exercise_code] ?? s.exercise_code}</strong>
+                <span class="muted"> · ${s.minutes} 分 · ${formatTime(s.logged_at)} · ${s.calculated_kcal} kcal</span>
+              </div>
+              <button type="button" class="btn-delete" data-delete-id="${s.id}" data-delete-kind="strength">削除</button>
+            </div>`
+                )
+                .join("")
+            : `<p class="muted">まだ記録がありません</p>`
+        }
+      </div>
     </div>
     ${renderTabs()}
   `;
@@ -199,14 +332,16 @@ async function renderExercise(): Promise<void> {
     const minutes = Number((document.getElementById("tm-min") as HTMLInputElement).value);
     const kcalRaw = (document.getElementById("tm-kcal") as HTMLInputElement).value;
     await api.addTreadmill(minutes, kcalRaw ? Number(kcalRaw) : undefined);
-    alert("記録しました");
+    await renderExercise();
   });
   document.getElementById("st-btn")!.addEventListener("click", async () => {
     const code = (document.getElementById("st-code") as HTMLSelectElement).value;
     const minutes = Number((document.getElementById("st-min") as HTMLInputElement).value);
     await api.addStrength(code, minutes);
-    alert("記録しました");
+    await renderExercise();
   });
+  bindDeleteButtons('[data-delete-kind="treadmill"]', api.deleteTreadmill, renderExercise);
+  bindDeleteButtons('[data-delete-kind="strength"]', api.deleteStrength, renderExercise);
 }
 
 async function renderWeek(): Promise<void> {

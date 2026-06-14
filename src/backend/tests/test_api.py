@@ -116,3 +116,35 @@ def test_meal_preset_flow(client):
     )
     dash = client.get("/api/v1/dashboard/today", params={"date": "2026-06-13"}).json()
     assert dash["intake"]["kcal"] == 188
+
+
+def test_delete_meal_walk_and_weight(client):
+    client.put(
+        "/api/v1/profile",
+        json={
+            "height_cm": 175,
+            "birth_date": "1990-01-15",
+            "sex": "male",
+            "activity_factor": 1.375,
+            "current_weight_kg": 72,
+            "setup_completed": True,
+        },
+    )
+    meal = client.post(
+        "/api/v1/meals",
+        json={
+            "log_date": "2026-06-13",
+            "name": "test",
+            "kcal": 100,
+            "protein_g": 1,
+            "fat_g": 1,
+            "carbs_g": 1,
+        },
+    ).json()
+    assert client.delete(f"/api/v1/meals/{meal['id']}").status_code == 204
+
+    walk = client.post("/api/v1/walks", json={"discovery_note": "test"}).json()
+    assert client.delete(f"/api/v1/walks/{walk['id']}").status_code == 204
+
+    weight = client.post("/api/v1/weights", json={"weight_kg": 71.5}).json()
+    assert client.delete(f"/api/v1/weights/{weight['id']}").status_code == 204

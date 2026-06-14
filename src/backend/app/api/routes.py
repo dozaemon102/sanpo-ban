@@ -247,6 +247,16 @@ def create_weight(body: WeightCreate, db: Session = Depends(get_db)) -> WeightLo
     return row
 
 
+@router.delete("/weights/{weight_id}", status_code=204)
+def delete_weight(weight_id: int, db: Session = Depends(get_db)) -> Response:
+    row = db.get(WeightLog, weight_id)
+    if not row:
+        raise not_found("Weight log not found")
+    db.delete(row)
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.post("/sync/health")
 def sync_health(body: HealthSyncRequest, db: Session = Depends(get_db)) -> dict:
     now = now_jst()
@@ -284,6 +294,16 @@ def create_walk(body: WalkCreate, db: Session = Depends(get_db)) -> WalkSession:
     db.commit()
     db.refresh(walk)
     return walk
+
+
+@router.delete("/walks/{walk_id}", status_code=204)
+def delete_walk(walk_id: int, db: Session = Depends(get_db)) -> Response:
+    walk = db.get(WalkSession, walk_id)
+    if not walk:
+        raise not_found("Walk not found")
+    db.delete(walk)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/exercises/treadmill", response_model=list[TreadmillResponse])
