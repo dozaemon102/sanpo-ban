@@ -12,7 +12,7 @@
 
 - 歩数・体重の計測（iPhone ヘルスケア）
 - DNS / ルーティング（自宅 LAN）
-- Phase 2: Open Food Facts による食品情報取得
+- Phase 2: Open Food Facts による食品情報取得 → **v2 で実装対象**
 
 ## 2. コンテキスト図
 
@@ -30,7 +30,7 @@ flowchart LR
   Browser -->|HTTP LAN| App
   iPhone -->|POST /api/sync/health| App
   App --> MySQL
-  App -.->|Phase 2| OFF
+  App -->|HTTPS lookup| OFF
 ```
 
 ## 3. アクター
@@ -45,10 +45,11 @@ flowchart LR
 | システム | 連携目的 | 連携方式（概要） |
 |----------|----------|-----------------|
 | iPhone ヘルスケア | 歩数・体重のソース | ショートカットが読取 → HTTP POST（Phase 1） |
-| Open Food Facts | バーコード食品情報 | HTTPS REST（Phase 2 のみ） |
+| Open Food Facts | バーコード食品情報 | HTTPS REST（**v2**。Pi → OFF。身体データは送信しない） |
 
 ## 変更履歴
 
 | 日付 | 変更内容 |
 |------|----------|
 | 2026-06-13 | 初版作成 |
+| 2026-06-13 | v2: OFF 連携を実線化 |

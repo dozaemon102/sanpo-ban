@@ -24,12 +24,14 @@
 | DB マイグレーション | Alembic |
 | API 契約 | OpenAPI 3（FastAPI 生成 + 手整備） |
 | テスト | pytest（backend）、Vitest（frontend 任意） |
+| **外部 API クライアント（v2）** | **httpx**（Open Food Facts HTTPS 呼出） |
+| **バーコード読取（v2）** | **Barcode Detector API**（ブラウザネイティブ）+ 手入力フォールバック |
 | CI/CD | Phase 1 ではローカル verify-run のみ。Pi デプロイ手順は infra README |
 
 ## 4. 制約・前提
 
 - 認証・OAuth は Phase 1 では導入しない（NFR-002）
-- 外部 API は Phase 1 では不使用（Open Food Facts は Phase 2）
+- 外部 API は **v2 から Open Food Facts**（バーコード lookup）。v1 は外部 API なし
 - MySQL バージョンは **8.0.x** に pin（OPN-005 解消）。開発・Pi とも `8.0.36` イメージを推奨
 - タイムゾーンは `Asia/Tokyo` 固定（日次集計の基準）
 - iPhone 同期は iOS ショートカットから LAN 内 HTTP POST
@@ -39,3 +41,4 @@
 | 日付 | 変更内容 |
 |------|----------|
 | 2026-06-13 | 初版作成 |
+| 2026-06-13 | v2: Open Food Facts・httpx・Barcode Detector を追記 |
