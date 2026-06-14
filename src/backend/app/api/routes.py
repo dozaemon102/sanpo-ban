@@ -20,6 +20,7 @@ from app.models.entities import (
 )
 from app.schemas.api import (
     DashboardToday,
+    FoodLookupResponse,
     FoodPresetCreate,
     FoodPresetResponse,
     HealthSyncRequest,
@@ -47,6 +48,7 @@ from app.services.calculations import (
     treadmill_burn_kcal,
 )
 from app.services.dashboard_service import build_dashboard, get_profile, week_summary
+from app.services.open_food_facts import lookup_barcode
 
 router = APIRouter(prefix="/api/v1")
 
@@ -177,6 +179,12 @@ def delete_preset(preset_id: int, db: Session = Depends(get_db)) -> Response:
     db.delete(preset)
     db.commit()
     return Response(status_code=204)
+
+
+@router.get("/foods/barcode/{barcode}", response_model=FoodLookupResponse)
+async def lookup_food_barcode(barcode: str) -> FoodLookupResponse:
+    result = await lookup_barcode(barcode)
+    return FoodLookupResponse(**result)
 
 
 @router.get("/meals", response_model=list[MealLogResponse])

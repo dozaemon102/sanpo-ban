@@ -16,3 +16,11 @@ def not_found(message: str = "Resource not found") -> AppError:
 
 def profile_not_setup() -> AppError:
     return AppError(409, "PROFILE_NOT_SETUP", "Profile setup is not completed")
+
+
+def barcode_not_found(message: str = "Product not found in Open Food Facts") -> AppError:
+    return AppError(404, "BARCODE_NOT_FOUND", message)
+
+
+def off_unavailable(message: str = "Open Food Facts is temporarily unavailable") -> AppError:
+    return AppError(502, "OFF_UNAVAILABLE", message)

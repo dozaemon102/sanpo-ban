@@ -79,6 +79,17 @@ class FoodPresetResponse(FoodPresetCreate):
     model_config = {"from_attributes": True}
 
 
+class FoodLookupResponse(BaseModel):
+    barcode: str = Field(pattern=r"^[0-9]{8,14}$")
+    name: str
+    kcal: int = Field(ge=0)
+    protein_g: float = Field(ge=0)
+    fat_g: float = Field(ge=0)
+    carbs_g: float = Field(ge=0)
+    source: str = "open_food_facts"
+    serving_note: str | None = None
+
+
 class MealLogCreate(BaseModel):
     log_date: date
     name: str
@@ -87,6 +98,7 @@ class MealLogCreate(BaseModel):
     fat_g: float = Field(ge=0)
     carbs_g: float = Field(ge=0)
     food_preset_id: int | None = None
+    barcode: str | None = Field(default=None, pattern=r"^[0-9]{8,14}$")
 
 
 class MealLogResponse(MealLogCreate):

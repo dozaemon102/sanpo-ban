@@ -1,5 +1,6 @@
 import "./styles/notion.css";
 import { api } from "./api/client";
+import { openBarcodeFlow } from "./barcode-flow";
 import type { DashboardToday, ProfileUpdate } from "./types";
 
 type Tab = "today" | "meals" | "walks" | "exercise" | "week";
@@ -177,6 +178,7 @@ async function renderMeals(): Promise<void> {
   app.innerHTML = `
     <div class="page">
       <h1 class="page-title">食事</h1>
+      <button class="btn btn-primary btn-block" id="barcode-btn">バーコード</button>
       <p class="muted">定番をタップで記録（${date}）</p>
       <div class="preset-grid">
         ${
@@ -213,6 +215,9 @@ async function renderMeals(): Promise<void> {
     ${renderTabs()}
   `;
   bindTabs();
+  document.getElementById("barcode-btn")!.addEventListener("click", () => {
+    openBarcodeFlow(date, renderMeals);
+  });
   presets.forEach((p) => {
     document.querySelector(`[data-id="${p.id}"]`)!.addEventListener("click", async () => {
       await api.addMealFromPreset(p, date);

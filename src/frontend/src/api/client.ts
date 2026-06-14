@@ -1,6 +1,8 @@
 import type {
   DashboardToday,
+  FoodLookupResponse,
   FoodPreset,
+  MealCreate,
   MealLog,
   Profile,
   ProfileUpdate,
@@ -33,8 +35,11 @@ export const api = {
   getDashboard: (date?: string) =>
     request<DashboardToday>(`/dashboard/today${date ? `?date=${date}` : ""}`),
   getPresets: () => request<FoodPreset[]>("/food-presets"),
+  lookupBarcode: (barcode: string) => request<FoodLookupResponse>(`/foods/barcode/${barcode}`),
   getMeals: (date: string) => request<MealLog[]>(`/meals?date=${date}`),
   deleteMeal: (mealId: number) => request<void>(`/meals/${mealId}`, { method: "DELETE" }),
+  addMeal: (body: MealCreate) =>
+    request<MealLog>("/meals", { method: "POST", body: JSON.stringify(body) }),
   addMealFromPreset: (preset: FoodPreset, logDate: string) =>
     request("/meals", {
       method: "POST",

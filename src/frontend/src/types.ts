@@ -65,6 +65,28 @@ export interface WeekSummary {
   };
 }
 
+export interface FoodLookupResponse {
+  barcode: string;
+  name: string;
+  kcal: number;
+  protein_g: number;
+  fat_g: number;
+  carbs_g: number;
+  source: string;
+  serving_note: string | null;
+}
+
+export interface MealCreate {
+  log_date: string;
+  name: string;
+  kcal: number;
+  protein_g: number;
+  fat_g: number;
+  carbs_g: number;
+  food_preset_id: number | null;
+  barcode?: string;
+}
+
 export interface MealLog {
   id: number;
   log_date: string;
@@ -74,6 +96,7 @@ export interface MealLog {
   fat_g: number;
   carbs_g: number;
   food_preset_id: number | null;
+  barcode: string | null;
   logged_at: string;
 }
 

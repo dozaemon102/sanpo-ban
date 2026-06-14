@@ -50,6 +50,7 @@ class MealLog(Base):
     fat_g: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     carbs_g: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     food_preset_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    barcode: Mapped[str | None] = mapped_column(String(14), nullable=True)
     logged_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
