@@ -18,7 +18,7 @@
 | feature | 概要 | 状態 |
 |---------|------|------|
 | sanpo-ban（v1） | MVP ダッシュボード全体 | **完了**（Pi 運用中） |
-| sanpo-ban（v2） | バーコード + Open Food Facts | 基本設計 人間承認待ち |
+| sanpo-ban（v2） | バーコード + Open Food Facts | 詳細設計 人間承認待ち |
 
 ## UI
 
