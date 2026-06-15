@@ -201,53 +201,127 @@ def history_day_metric(
     db: Session, profile: UserProfile, metric: HistoryMetric, on_date: date
 ) -> float | None:
     """履歴用: その日に記録がなければ None（TOP カードの最新値フォールバックは使わない）。"""
-    if metric == "weight":
-        row = _weight_log_on_date(db, on_date)
-        return float(row.weight_kg) if row else None
+    cache = _HistoryRangeCache(db, profile, on_date, on_date)
+    return cache.day_metric(metric, on_date)
 
-    if metric == "bmi":
-        row = _weight_log_on_date(db, on_date)
-        return float(row.bmi) if row and row.bmi is not None else None
 
-    if metric == "lbm":
-        row = _weight_log_on_date(db, on_date)
-        return float(row.lbm_kg) if row and row.lbm_kg is not None else None
+class _HistoryRangeCache:
+    """履歴 API 用: 期間内データを一括読込し、日次・集計をメモリ上で行う。"""
 
-    if metric == "body_fat_pct":
-        row = _weight_log_on_date(db, on_date)
-        return float(row.body_fat_pct) if row and row.body_fat_pct is not None else None
+    def __init__(self, db: Session, profile: UserProfile, start: date, end: date) -> None:
+        self.db = db
+        self.profile = profile
+        range_start = datetime.combine(start, time.min, tzinfo=JST)
+        range_end = datetime.combine(end + timedelta(days=1), time.min, tzinfo=JST)
 
-    if metric == "steps":
-        return _steps_logged_on_date(db, on_date)
+        logs = db.scalars(
+            select(WeightLog)
+            .where(WeightLog.logged_at >= range_start, WeightLog.logged_at < range_end)
+            .order_by(WeightLog.logged_at.desc())
+        ).all()
+        self.weight_by_date: dict[date, WeightLog] = {}
+        for log in logs:
+            d = log.logged_at.astimezone(JST).date()
+            if d not in self.weight_by_date:
+                self.weight_by_date[d] = log
 
-    if metric == "intake":
-        return float(sum_meals(db, on_date).kcal)
+        self.steps_by_date: dict[date, int] = {
+            r.step_date: r.steps
+            for r in db.scalars(
+                select(DailySteps).where(
+                    DailySteps.step_date >= start,
+                    DailySteps.step_date <= end,
+                )
+            ).all()
+        }
 
-    if metric == "exercise":
-        row = _weight_log_on_date(db, on_date)
-        weight = float(row.weight_kg) if row else float(profile.initial_weight_kg)
-        return float(burn_for_date(db, on_date, weight).total_kcal)
+        self.intake_by_date: dict[date, int] = {
+            row[0]: int(row[1])
+            for row in db.execute(
+                select(MealLog.log_date, func.coalesce(func.sum(MealLog.kcal), 0))
+                .where(MealLog.log_date >= start, MealLog.log_date <= end)
+                .group_by(MealLog.log_date)
+            ).all()
+            if int(row[1]) > 0
+        }
 
-    if metric == "bmr":
-        row = _weight_log_on_date(db, on_date)
-        if row and row.lbm_kg is not None:
-            return float(katch_mcardle_bmr(float(row.lbm_kg)))
+        self.treadmill_by_date: dict[date, int] = {}
+        for row in db.scalars(
+            select(TreadmillLog).where(
+                TreadmillLog.logged_at >= range_start,
+                TreadmillLog.logged_at < range_end,
+            )
+        ).all():
+            d = row.logged_at.astimezone(JST).date()
+            self.treadmill_by_date[d] = self.treadmill_by_date.get(d, 0) + int(row.calculated_kcal)
+
+        self.strength_by_date: dict[date, int] = {}
+        for row in db.scalars(
+            select(StrengthLog).where(
+                StrengthLog.logged_at >= range_start,
+                StrengthLog.logged_at < range_end,
+            )
+        ).all():
+            d = row.logged_at.astimezone(JST).date()
+            self.strength_by_date[d] = self.strength_by_date.get(d, 0) + int(row.calculated_kcal)
+
+    def _exercise_kcal(self, on_date: date) -> float:
+        row = self.weight_by_date.get(on_date)
+        weight = float(row.weight_kg) if row else float(self.profile.initial_weight_kg)
+        steps = self.steps_by_date.get(on_date)
+        walk = walk_burn_kcal(steps, weight) if steps is not None else 0
+        treadmill = self.treadmill_by_date.get(on_date, 0)
+        strength = self.strength_by_date.get(on_date, 0)
+        total = walk + treadmill + strength
+        return float(total) if total > 0 or steps is not None else None
+
+    def day_metric(self, metric: HistoryMetric, on_date: date) -> float | None:
+        if metric == "weight":
+            row = self.weight_by_date.get(on_date)
+            return float(row.weight_kg) if row else None
+        if metric == "bmi":
+            row = self.weight_by_date.get(on_date)
+            return float(row.bmi) if row and row.bmi is not None else None
+        if metric == "lbm":
+            row = self.weight_by_date.get(on_date)
+            return float(row.lbm_kg) if row and row.lbm_kg is not None else None
+        if metric == "body_fat_pct":
+            row = self.weight_by_date.get(on_date)
+            return float(row.body_fat_pct) if row and row.body_fat_pct is not None else None
+        if metric == "steps":
+            return float(self.steps_by_date[on_date]) if on_date in self.steps_by_date else None
+        if metric == "intake":
+            return float(self.intake_by_date[on_date]) if on_date in self.intake_by_date else None
+        if metric == "exercise":
+            return self._exercise_kcal(on_date)
+        if metric == "bmr":
+            row = self.weight_by_date.get(on_date)
+            if row and row.lbm_kg is not None:
+                return float(katch_mcardle_bmr(float(row.lbm_kg)))
+            return None
+        if metric == "balance":
+            row = self.weight_by_date.get(on_date)
+            if not row or row.lbm_kg is None:
+                return None
+            lbm_kg = float(row.lbm_kg)
+            bmr_kcal = katch_mcardle_bmr(lbm_kg)
+            intake_kcal = self.intake_by_date.get(on_date, 0)
+            exercise = self._exercise_kcal(on_date) or 0
+            tef = tef_kcal(intake_kcal, float(self.profile.tef_rate))
+            return float(intake_kcal - bmr_kcal - self.profile.neat_kcal - exercise - tef)
         return None
 
-    if metric == "balance":
-        row = _weight_log_on_date(db, on_date)
-        lbm_kg = float(row.lbm_kg) if row and row.lbm_kg is not None else None
-        if lbm_kg is None:
+    def average_metric(self, metric: HistoryMetric, start: date, end: date) -> float | None:
+        values: list[float] = []
+        d = start
+        while d <= end:
+            val = self.day_metric(metric, d)
+            if val is not None:
+                values.append(val)
+            d += timedelta(days=1)
+        if not values:
             return None
-        intake = sum_meals(db, on_date)
-        bmr_kcal = katch_mcardle_bmr(lbm_kg)
-        weight = float(row.weight_kg) if row else float(profile.initial_weight_kg)
-        burn = burn_for_date(db, on_date, weight)
-        neat = profile.neat_kcal
-        tef = tef_kcal(intake.kcal, float(profile.tef_rate))
-        return float(intake.kcal - bmr_kcal - neat - burn.total_kcal - tef)
-
-    return None
+        return sum(values) / len(values)
 
 
 def daily_snapshot(db: Session, on_date: date, profile: UserProfile) -> dict:
@@ -387,21 +461,11 @@ def _metric_value_for_range(
     start: date,
     end: date,
     period: HistoryPeriod,
+    cache: _HistoryRangeCache,
 ) -> float | None:
     if period == "day" or start == end:
-        return history_day_metric(db, profile, metric, start)
-
-    values: list[float] = []
-    d = start
-    while d <= end:
-        val = history_day_metric(db, profile, metric, d)
-        if val is not None:
-            values.append(val)
-        d += timedelta(days=1)
-
-    if not values:
-        return None
-    return sum(values) / len(values)
+        return cache.day_metric(metric, start)
+    return cache.average_metric(metric, start, end)
 
 
 def build_history(
@@ -419,9 +483,19 @@ def build_history(
     profile = get_profile(db)
     require_setup(profile)
 
+    buckets = _period_buckets(period, anchor_date)
+    if not buckets:
+        return DashboardHistory(
+            metric=metric,
+            period=period,
+            anchor_date=anchor_date,
+            points=[],
+        )
+
+    cache = _HistoryRangeCache(db, profile, buckets[0][1], buckets[-1][2])
     points: list[HistoryPoint] = []
-    for label, start, end in _period_buckets(period, anchor_date):
-        val = _metric_value_for_range(db, profile, metric, start, end, period)
+    for label, start, end in buckets:
+        val = _metric_value_for_range(db, profile, metric, start, end, period, cache)
         points.append(
             HistoryPoint(label=label, start_date=start, end_date=end, value=val)
         )

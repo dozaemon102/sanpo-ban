@@ -220,6 +220,23 @@ def test_weight_history_week_average(client):
     assert anchor_week["value"] == pytest.approx(72.0)
 
 
+def test_dashboard_history_year_period(client):
+    _setup_profile(client)
+    client.post("/api/v1/sync/health", json={"date": "2026-06-15", "weight_kg": 74.5})
+
+    r = client.get(
+        "/api/v1/dashboard/history/weight",
+        params={"period": "year", "anchor_date": "2026-06-15"},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["period"] == "year"
+    assert len(data["points"]) == 5
+    by_label = {p["label"]: p["value"] for p in data["points"]}
+    assert by_label["2026"] == pytest.approx(74.5)
+    assert by_label["2025"] is None
+
+
 def test_neat_tef_affects_balance(client):
     _setup_profile(client)
     client.post(

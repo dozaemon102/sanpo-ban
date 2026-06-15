@@ -1,7 +1,7 @@
 import "./styles/notion.css";
 import { api } from "./api/client";
 import { openBarcodeFlow } from "./barcode-flow";
-import { formatHistoryListValue, mountHistoryChart } from "./history-chart";
+import { mountHistoryChart } from "./history-chart";
 import type {
   DashboardTop,
   HistoryMetric,
@@ -29,55 +29,55 @@ const CARD_ORDER: {
     label: "収支",
     large: true,
     tone: "violet",
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18V6m0 12h16M8 6v12M12 10v8M16 8v10"/></svg>`,
+    icon: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 16c0-4 3-7 7-7s7 3 7 7v2H5v-2z" opacity=".25"/><path d="M7 17h10M9 14h6" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M12 5v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
   },
   {
     metric: "weight",
     label: "体重",
     tone: "orange",
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="13" r="7"/><path d="M12 10v3M9 6h6"/></svg>`,
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="10" width="16" height="10" rx="3" fill="currentColor" opacity=".18"/><circle cx="12" cy="13" r="4"/><path d="M8 10V8a4 4 0 018 0v2"/></svg>`,
   },
   {
     metric: "intake",
     label: "摂取",
     tone: "green",
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3v8a6 6 0 0012 0V3M6 14h12"/></svg>`,
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 4v7a6 6 0 0012 0V4" fill="currentColor" opacity=".15"/><path d="M6 4v7a6 6 0 0012 0V4M8 20h8" stroke-linecap="round"/></svg>`,
   },
   {
     metric: "bmr",
     label: "基礎代謝",
     tone: "blue",
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3c2 4 5 6 5 10a5 5 0 01-10 0c0-4 3-6 5-10z"/></svg>`,
+    icon: `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="8" r="2.2" opacity=".7"/><circle cx="16" cy="7" r="1.8" opacity=".55"/><circle cx="12" cy="14" r="2.4" opacity=".85"/><path d="M8 8l4 4M16 7l-2 5" stroke="currentColor" stroke-width="1.4" fill="none" opacity=".9"/></svg>`,
   },
   {
     metric: "exercise",
     label: "消費",
     tone: "coral",
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="14" cy="6" r="2"/><path d="M4 20l6-8 4 4 6-10"/></svg>`,
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="15" cy="5.5" r="2" fill="currentColor" opacity=".3"/><path d="M4 19l5-7 3 3 5-8 3 6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   },
   {
     metric: "steps",
     label: "歩数",
     tone: "teal",
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 4l2 2-6 8-3-3-5 7"/><circle cx="17" cy="5" r="1.5" fill="currentColor"/></svg>`,
+    icon: `<svg viewBox="0 0 24 24" fill="currentColor"><ellipse cx="8" cy="6" rx="2.2" ry="2.8" opacity=".75"/><ellipse cx="13" cy="10" rx="2.2" ry="2.8" opacity=".85"/><ellipse cx="17" cy="15" rx="2.2" ry="2.8"/><path d="M8 8.8v3.4M13 12.8v3.4" stroke="currentColor" stroke-width="1.2" fill="none" opacity=".5"/></svg>`,
   },
   {
     metric: "body_fat_pct",
     label: "体脂肪率",
     tone: "amber",
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>`,
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 4c3 2 5 4.5 5 8a5 5 0 01-10 0c0-3.5 2-6 5-8z" fill="currentColor" opacity=".2"/><path d="M9 12h6M12 9v6" stroke-linecap="round"/></svg>`,
   },
   {
     metric: "bmi",
     label: "BMI",
     tone: "rose",
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="14" width="4" height="6" rx="1"/><rect x="10" y="10" width="4" height="10" rx="1"/><rect x="16" y="6" width="4" height="14" rx="1"/></svg>`,
+    icon: `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="14" width="3.5" height="6" rx="1" opacity=".55"/><rect x="10.25" y="10" width="3.5" height="10" rx="1" opacity=".75"/><rect x="15.5" y="6" width="3.5" height="14" rx="1"/></svg>`,
   },
   {
     metric: "lbm",
     label: "除脂肪体重",
     tone: "sky",
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="2"/><path d="M8 21v-4a4 4 0 018 0v4M6 11h12"/></svg>`,
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="5" r="2.2" fill="currentColor" opacity=".25"/><path d="M8.5 21v-4.5a3.5 3.5 0 017 0V21" fill="currentColor" opacity=".18"/><path d="M7 12c1.5-1 3-1.5 5-1.5s3.5.5 5 1.5"/></svg>`,
   },
 ];
 
@@ -286,18 +286,6 @@ async function renderHistory(): Promise<void> {
       <div class="card history-chart-card">
         <div id="history-chart" class="history-chart"></div>
       </div>
-      <div class="card history-summary">
-        ${hist.points
-          .slice()
-          .reverse()
-          .filter((pt) => pt.value != null)
-          .slice(0, 5)
-          .map(
-            (pt) =>
-              `<div class="list-row"><div class="list-row-main"><strong>${pt.label}</strong></div><div class="history-value">${formatHistoryListValue(historyView!.metric, pt.value)}</div></div>`
-          )
-          .join("") || `<p class="muted">記録がありません</p>`}
-      </div>
     </div>
     ${renderTabs()}
   `;
@@ -305,7 +293,7 @@ async function renderHistory(): Promise<void> {
   bindTabs();
   const chartEl = document.getElementById("history-chart");
   if (chartEl) {
-    mountHistoryChart(chartEl, hist.points, historyPeriod, accent);
+    mountHistoryChart(chartEl, historyView.metric, hist.points, historyPeriod, accent);
   }
 
   document.querySelectorAll(".segment").forEach((el) => {

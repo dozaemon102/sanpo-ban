@@ -517,21 +517,50 @@ body {
   padding: 12px 8px 8px;
 }
 
-.history-chart {
-  width: 100%;
-  min-height: 220px;
+.history-chart-wrap {
+  position: relative;
 }
 
-.history-chart-empty {
-  text-align: center;
-  padding: 48px 16px;
-  margin: 0;
+.history-chart {
+  width: 100%;
+  min-height: 240px;
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  min-width: 112px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(26, 29, 38, 0.92);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.chart-tooltip strong {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  opacity: 0.85;
+  margin-bottom: 2px;
+}
+
+.chart-tooltip span {
+  font-size: 0.875rem;
+  font-weight: 700;
 }
 
 .history-chart-svg {
   display: block;
 }
 
-.history-summary .section-title {
-  margin-bottom: 0;
+.chart-hit {
+  cursor: pointer;
+}
+
+.chart-bar {
+  cursor: pointer;
 }

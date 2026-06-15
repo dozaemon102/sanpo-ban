@@ -6,41 +6,70 @@ function shortLabel(label: string, period: HistoryPeriod): string {
     return `${Number(m)}/${Number(d)}`;
   }
   if (period === "week" && label.includes("-W")) {
-    return label.split("-W")[1] ?? label;
+    return `W${label.split("-W")[1] ?? label}`;
   }
   if (period === "month" && /^\d{4}-\d{2}$/.test(label)) {
     return `${Number(label.split("-")[1])}月`;
   }
+  if (period === "year" && /^\d{4}$/.test(label)) {
+    return `${label}年`;
+  }
   return label;
 }
 
+function detailLabel(pt: HistoryPoint, period: HistoryPeriod): string {
+  if (period === "day") return pt.label;
+  if (period === "week") return `${pt.start_date} 〜 ${pt.end_date}`;
+  if (period === "month") return pt.label.replace("-", "年") + "月";
+  return `${pt.label}年`;
+}
+
+export function formatHistoryValue(
+  metric: HistoryMetric,
+  value: number | null | undefined
+): string {
+  if (value == null) return "—";
+  if (metric === "balance") return `${Math.round(value)} kcal`;
+  if (metric === "weight" || metric === "lbm") return `${value.toFixed(1)} kg`;
+  if (metric === "body_fat_pct") return `${value.toFixed(1)} %`;
+  if (metric === "bmi") return value.toFixed(1);
+  if (metric === "steps") return `${Math.round(value).toLocaleString()} 歩`;
+  return `${Math.round(value)} kcal`;
+}
+
+type ChartPoint = {
+  index: number;
+  x: number;
+  y: number;
+  barX: number;
+  barY: number;
+  barW: number;
+  barH: number;
+  point: HistoryPoint;
+};
+
 export function mountHistoryChart(
   container: HTMLElement,
+  metric: HistoryMetric,
   points: HistoryPoint[],
   period: HistoryPeriod,
   accent: string
 ): void {
-  const defined = points.filter((p) => p.value != null);
-  if (defined.length === 0) {
-    container.innerHTML = `<p class="muted history-chart-empty">この期間に記録がありません</p>`;
-    return;
-  }
-
   const width = Math.max(container.clientWidth || 320, 280);
-  const height = 220;
-  const pad = { top: 18, right: 12, bottom: 32, left: 44 };
+  const height = 240;
+  const pad = { top: 24, right: 12, bottom: 36, left: 44 };
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
-  const n = points.length;
-  const slot = plotW / Math.max(n, 1);
-  const barW = Math.min(slot * 0.55, 22);
+  const n = Math.max(points.length, 1);
+  const slot = plotW / n;
+  const barW = Math.min(slot * 0.52, 24);
 
-  const values = defined.map((p) => p.value as number);
-  let yMin = Math.min(...values);
-  let yMax = Math.max(...values);
+  const defined = points.filter((p) => p.value != null).map((p) => p.value as number);
+  let yMin = defined.length ? Math.min(...defined) : 0;
+  let yMax = defined.length ? Math.max(...defined) : 1;
   if (yMin === yMax) {
-    yMin -= Math.abs(yMin) * 0.1 + 1;
-    yMax += Math.abs(yMax) * 0.1 + 1;
+    yMin -= Math.abs(yMin) * 0.15 + 1;
+    yMax += Math.abs(yMax) * 0.15 + 1;
   } else {
     const padY = (yMax - yMin) * 0.12;
     yMin -= padY;
@@ -50,6 +79,7 @@ export function mountHistoryChart(
   const xAt = (i: number) => pad.left + slot * i + slot / 2;
   const yAt = (v: number) => pad.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
 
+  const hits: ChartPoint[] = [];
   const bars: string[] = [];
   const linePts: string[] = [];
   let prevXY: { x: number; y: number } | null = null;
@@ -59,9 +89,20 @@ export function mountHistoryChart(
     if (pt.value != null) {
       const y = yAt(pt.value);
       const h = pad.top + plotH - y;
+      const bx = x - barW / 2;
       bars.push(
-        `<rect x="${(x - barW / 2).toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${accent}" opacity="0.85"/>`
+        `<rect class="chart-bar" data-idx="${i}" x="${bx.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="5" fill="${accent}" opacity="0.88"/>`
       );
+      hits.push({
+        index: i,
+        x,
+        y,
+        barX: bx,
+        barY: y,
+        barW,
+        barH: h,
+        point: pt,
+      });
       if (prevXY) {
         linePts.push(`L ${x.toFixed(1)} ${y.toFixed(1)}`);
       } else {
@@ -89,10 +130,17 @@ export function mountHistoryChart(
 
   const xLabels = points
     .map((pt, i) => {
-      if (n > 10 && i % 2 !== 0 && i !== n - 1) return "";
+      if (n > 8 && i % 2 !== 0 && i !== n - 1) return "";
       const x = xAt(i);
-      return `<text x="${x.toFixed(1)}" y="${height - 8}" text-anchor="middle" fill="#9ca3af" font-size="10">${shortLabel(pt.label, period)}</text>`;
+      return `<text x="${x.toFixed(1)}" y="${height - 10}" text-anchor="middle" fill="#9ca3af" font-size="10">${shortLabel(pt.label, period)}</text>`;
     })
+    .join("");
+
+  const hitAreas = hits
+    .map(
+      (h) =>
+        `<rect class="chart-hit" data-idx="${h.index}" x="${(h.x - slot / 2).toFixed(1)}" y="${pad.top}" width="${slot.toFixed(1)}" height="${plotH}" fill="transparent"/>`
+    )
     .join("");
 
   const linePath =
@@ -100,25 +148,58 @@ export function mountHistoryChart(
       ? `<path d="${linePts.join(" ")}" fill="none" stroke="${accent}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`
       : "";
 
-  container.innerHTML = `
-    <svg class="history-chart-svg" viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="推移グラフ">
-      ${gridLines}
-      ${bars.join("")}
-      ${linePath}
-      ${yLabels}
-      ${xLabels}
-    </svg>`;
-}
+  const emptyHint =
+    defined.length === 0
+      ? `<text x="${(width / 2).toFixed(1)}" y="${(height / 2).toFixed(1)}" text-anchor="middle" fill="#9ca3af" font-size="12">タップ可能なデータがありません</text>`
+      : "";
 
-export function formatHistoryListValue(
-  metric: HistoryMetric,
-  value: number | null | undefined
-): string {
-  if (value == null) return "—";
-  if (metric === "balance") return `${Math.round(value)} kcal`;
-  if (metric === "weight" || metric === "lbm") return `${value.toFixed(1)} kg`;
-  if (metric === "body_fat_pct") return `${value.toFixed(1)} %`;
-  if (metric === "bmi") return value.toFixed(1);
-  if (metric === "steps") return `${Math.round(value).toLocaleString()} 歩`;
-  return `${Math.round(value)} kcal`;
+  container.innerHTML = `
+    <div class="history-chart-wrap">
+      <svg class="history-chart-svg" viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="推移グラフ">
+        ${gridLines}
+        ${bars.join("")}
+        ${linePath}
+        ${hitAreas}
+        ${yLabels}
+        ${xLabels}
+        ${emptyHint}
+      </svg>
+      <div id="chart-tooltip" class="chart-tooltip" hidden></div>
+    </div>`;
+
+  const tooltip = container.querySelector("#chart-tooltip") as HTMLElement;
+  const svg = container.querySelector("svg")!;
+
+  const showTip = (idx: number, clientX: number, clientY: number) => {
+    const hit = hits.find((h) => h.index === idx);
+    if (!hit || hit.point.value == null) return;
+    tooltip.hidden = false;
+    tooltip.innerHTML = `<strong>${detailLabel(hit.point, period)}</strong><span>${formatHistoryValue(metric, hit.point.value)}</span>`;
+    const wrap = container.querySelector(".history-chart-wrap")!.getBoundingClientRect();
+    const left = Math.min(Math.max(clientX - wrap.left - 60, 8), wrap.width - 128);
+    const top = Math.max(clientY - wrap.top - 56, 8);
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+    svg.querySelectorAll(".chart-bar").forEach((el) => {
+      el.setAttribute("opacity", el.getAttribute("data-idx") === String(idx) ? "1" : "0.45");
+    });
+  };
+
+  const hideTip = () => {
+    tooltip.hidden = true;
+    svg.querySelectorAll(".chart-bar").forEach((el) => el.setAttribute("opacity", "0.88"));
+  };
+
+  container.querySelectorAll(".chart-hit, .chart-bar").forEach((el) => {
+    const idx = Number((el as HTMLElement).dataset.idx);
+    el.addEventListener("click", (ev) => {
+      const e = ev as MouseEvent;
+      showTip(idx, e.clientX, e.clientY);
+    });
+  });
+
+  svg.addEventListener("click", (ev) => {
+    if ((ev.target as Element).classList.contains("chart-hit")) return;
+    hideTip();
+  });
 }
