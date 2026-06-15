@@ -299,7 +299,7 @@
 | OPN-005 | Pi 移行時の MySQL バージョン pin | infra / devops |
 | OPN-006 | OFF レスポンスから kcal/PFC を算出するフィールド優先順位 | 基本設計（FR-015） |
 | OPN-007 | カメラ権限拒否時の UX | **解消** — v2 写真フォールバック実装済 |
-| OPN-008 | v3 リネーム時の DB 名・systemd・Tailscale 手順 | 基本設計 / infra |
+| OPN-008 | v3 リネーム時の DB 名・systemd・Tailscale 手順 | **解消** — 基本設計 §10.5（DB `kenko_kanri` 新規、旧データ破棄可） |
 | OPN-009 | walk_sessions テーブル・API の削除タイミング | 詳細設計 |
 | OPN-010 | カード履歴 API の粒度（日/週/月/年） | 詳細設計 |
 

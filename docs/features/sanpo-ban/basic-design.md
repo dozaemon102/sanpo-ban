@@ -301,7 +301,7 @@ balance = intake − bmr − neat − exercise − tef
 - **符号:** マイナス = 赤字 = 痩せ方向。目標赤字ラインは表示しない（FR-047）
 - **LBM 解決:** 当日 WeightLog → なければ最新 WeightLog → なければ **bmr 不可**
   - LBM 未同期: 基礎代謝カードは同期促し、`balance` は `null`（UI で `--`）
-- **Mifflin-St Jeor / TDEE / 目標 kcal・PFC:** v3 UI から廃止。DB 列は移行期間残置可（詳細設計）
+- **Mifflin-St Jeor / TDEE / 目標 kcal・PFC:** v3 から廃止。`user_profile` から target 列・activity_factor を削除（詳細設計 DD-008）
 
 ### 10.2 TOP 画面（FR-044, FR-048）
 
@@ -340,7 +340,7 @@ NEAT / TEF は独立カードにせず、収支内訳または設定のみ。
 | Walks モジュール / walk_sessions | API・UI 削除。Health 歩数同期は継続 |
 | Summary 週タブ | UI 削除。CardHistory が週次も提供 |
 | 目標 kcal / PFC 残量 | Dashboard から削除 |
-| user_profile.target_* / activity_factor | 新規利用停止。NEAT/TEF 列を追加 |
+| user_profile.target_* / activity_factor | **列削除**（NEAT/TEF 列を追加） |
 
 ### 10.5 リネーム（FR-040, OPN-008 解消）
 
@@ -349,11 +349,14 @@ NEAT / TEF は独立カードにせず、収支内訳または設定のみ。
 | 表示名 | **健康管理**（HTML title, manifest, ヘッダ） |
 | slug / リポジトリ | `kenko-kanri`（フォルダ・git remote・compose project 名） |
 | systemd | `kenko-kanri.service`（旧 `sanpo-ban` から置換） |
-| MySQL DB 名 | **`sanpo_ban` を維持**（データ移行不要。接続 URL のみ env で統一） |
+| MySQL DB 名 | **`kenko_kanri` に変更**（旧 `sanpo_ban` は破棄。データ移行なし・初期セットアップから再開） |
+| compose / env | `MYSQL_DATABASE=kenko_kanri`、`DATABASE_URL` を更新 |
 | Tailscale serve | パス・ポートは不変。サービス再起動手順を infra に追記 |
 | PWA | アイコン背景**白**、名称「健康管理」（FR-052） |
 
-**移行手順（概要）:** ① Pi で git pull（リネーム後リモート）② compose / systemd 名更新 ③ 旧 walk API 404 確認 ④ ブックマーク/PWA 再追加案内（README）。
+**移行手順（概要）:** ① Pi でサービス停止 ② 旧 DB `sanpo_ban` 削除（データ破棄可）③ `kenko_kanri` 新規作成 ④ env / compose 更新 ⑤ `alembic upgrade head` ⑥ 設定タブで初回セットアップ ⑦ systemd / Tailscale 名更新 ⑧ PWA 再追加
+
+**人間承認（2026-06-14）:** DB データ消失を許容し DB 名変更に合意。
 
 ### 10.6 Health Sync 拡張（継続 + v3 表示）
 
@@ -384,7 +387,7 @@ NEAT / TEF は独立カードにせず、収支内訳または設定のみ。
 
 | ID | 内容 | 詳細設計で解決 |
 |----|------|---------------|
-| OPN-008 | リネーム手順 | **解消**（§10.5。DB 名維持） |
+| OPN-008 | リネーム手順 | **解消**（§10.5。DB `kenko_kanri` 新規・データ移行なし） |
 | OPN-009 | walk_sessions 削除タイミング | はい（v3 実装一括） |
 | OPN-010 | CardHistory API 粒度 | はい |
 | DD-007 | Balance API レスポンス・null 扱い | はい |
