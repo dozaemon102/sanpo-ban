@@ -10,6 +10,8 @@ class ProfileResponse(BaseModel):
     sex: str
     neat_kcal: int
     tef_rate: float
+    stride_cm: float | None = None
+    walking_speed_kmh: float | None = None
     initial_weight_kg: float
     setup_completed: bool
 
@@ -23,6 +25,8 @@ class ProfileUpdate(BaseModel):
     current_weight_kg: float = Field(ge=30, le=300)
     neat_kcal: int | None = Field(default=None, ge=0, le=2000)
     tef_rate: float | None = Field(default=None, ge=0, le=0.5)
+    stride_cm: float | None = Field(default=None, ge=30, le=120)
+    walking_speed_kmh: float | None = Field(default=None, ge=1, le=10)
     setup_completed: bool = False
 
 
@@ -59,7 +63,11 @@ class DashboardCards(BaseModel):
     intake_kcal: int
     bmr_kcal: int | None = None
     exercise_kcal: int
+    walk_kcal: int = 0
     steps: int
+    stride_cm: float | None = None
+    walking_speed_kmh: float | None = None
+    walk_calc_method: str = "simple"
     body_fat_pct: float | None = None
     bmi: float | None = None
     lbm_kg: float | None = None
@@ -158,6 +166,8 @@ class WeightResponse(BaseModel):
 class HealthSyncRequest(BaseModel):
     date: date
     steps: int | None = Field(default=None, ge=0)
+    stride_cm: float | None = Field(default=None, ge=30, le=120)
+    walking_speed_kmh: float | None = Field(default=None, ge=1, le=10)
     weight_kg: float | None = Field(default=None, ge=30, le=300)
     bmi: float | None = Field(default=None, ge=10, le=80)
     lbm_kg: float | None = Field(default=None, ge=20, le=200)
@@ -175,7 +185,7 @@ class HealthSyncRequest(BaseModel):
             value = stripped
         return value
 
-    @field_validator("weight_kg", "bmi", "lbm_kg", "body_fat_pct", mode="before")
+    @field_validator("weight_kg", "bmi", "lbm_kg", "body_fat_pct", "stride_cm", "walking_speed_kmh", mode="before")
     @classmethod
     def normalize_optional_number(cls, value: object) -> object | None:
         if value is None:

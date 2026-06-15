@@ -3,6 +3,7 @@ import type {
   DashboardTop,
   FoodLookupResponse,
   FoodPreset,
+  FoodPresetCreate,
   HistoryMetric,
   HistoryPeriod,
   MealCreate,
@@ -41,6 +42,8 @@ export const api = {
     return request<DashboardHistory>(`/dashboard/history/${metric}?${params}`);
   },
   getPresets: () => request<FoodPreset[]>("/food-presets"),
+  createPreset: (body: FoodPresetCreate) =>
+    request<FoodPreset>("/food-presets", { method: "POST", body: JSON.stringify(body) }),
   lookupBarcode: (barcode: string) => request<FoodLookupResponse>(`/foods/barcode/${barcode}`),
   getMeals: (date: string) => request<MealLog[]>(`/meals?date=${date}`),
   deleteMeal: (mealId: number) => request<void>(`/meals/${mealId}`, { method: "DELETE" }),

@@ -1,7 +1,9 @@
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { api } from "./api/client";
-import type { FoodLookupResponse, MealCreate } from "./types";
+import type { FoodLookupResponse, FoodPresetCreate, MealCreate } from "./types";
+
+type EntryTarget = "meal" | "preset";
 
 type BarcodeFormatName = "ean_13" | "upc_a" | "ean_8";
 
@@ -44,10 +46,13 @@ function renderConfirmForm(
   lookup: FoodLookupResponse,
   logDate: string,
   onDone: () => Promise<void>,
-  onCancel: () => void
+  onCancel: () => void,
+  target: EntryTarget = "meal"
 ): void {
+  const submitLabel = target === "preset" ? "Myセットに登録" : "食事に追加";
+  const title = target === "preset" ? "Myセットを確認" : "食事を確認";
   container.innerHTML = `
-    <h2 class="modal-title">食事を確認</h2>
+    <h2 class="modal-title">${title}</h2>
     <p class="muted">${lookup.serving_note ?? ""}</p>
     <form id="meal-confirm-form">
       <div class="field"><label>名称</label><input name="name" value="${escapeAttr(lookup.name)}" required maxlength="200" /></div>
@@ -55,7 +60,7 @@ function renderConfirmForm(
       <div class="field"><label>たんぱく質 (g)</label><input name="protein_g" type="number" min="0" step="0.1" value="${lookup.protein_g}" required /></div>
       <div class="field"><label>脂質 (g)</label><input name="fat_g" type="number" min="0" step="0.1" value="${lookup.fat_g}" required /></div>
       <div class="field"><label>炭水化物 (g)</label><input name="carbs_g" type="number" min="0" step="0.1" value="${lookup.carbs_g}" required /></div>
-      <button class="btn btn-primary btn-block" type="submit">食事に追加</button>
+      <button class="btn btn-primary btn-block" type="submit">${submitLabel}</button>
       <button class="btn btn-block modal-secondary" type="button" id="confirm-cancel">キャンセル</button>
       <p id="confirm-error" class="error"></p>
     </form>
@@ -64,18 +69,29 @@ function renderConfirmForm(
   document.getElementById("meal-confirm-form")!.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target as HTMLFormElement);
-    const body: MealCreate = {
-      log_date: logDate,
-      name: String(fd.get("name")),
-      kcal: Number(fd.get("kcal")),
-      protein_g: Number(fd.get("protein_g")),
-      fat_g: Number(fd.get("fat_g")),
-      carbs_g: Number(fd.get("carbs_g")),
-      food_preset_id: null,
-      barcode: lookup.barcode,
-    };
     try {
-      await api.addMeal(body);
+      if (target === "preset") {
+        const body: FoodPresetCreate = {
+          name: String(fd.get("name")),
+          kcal: Number(fd.get("kcal")),
+          protein_g: Number(fd.get("protein_g")),
+          fat_g: Number(fd.get("fat_g")),
+          carbs_g: Number(fd.get("carbs_g")),
+        };
+        await api.createPreset(body);
+      } else {
+        const body: MealCreate = {
+          log_date: logDate,
+          name: String(fd.get("name")),
+          kcal: Number(fd.get("kcal")),
+          protein_g: Number(fd.get("protein_g")),
+          fat_g: Number(fd.get("fat_g")),
+          carbs_g: Number(fd.get("carbs_g")),
+          food_preset_id: null,
+          barcode: lookup.barcode,
+        };
+        await api.addMeal(body);
+      }
       onCancel();
       await onDone();
     } catch (err) {
@@ -84,28 +100,33 @@ function renderConfirmForm(
   });
 }
 
-function renderManualForm(
+export function renderManualForm(
   container: HTMLElement,
   logDate: string,
   onDone: () => Promise<void>,
   onCancel: () => void,
-  opts?: { barcode?: string; reason?: string }
+  opts?: { barcode?: string; reason?: string; target?: EntryTarget }
 ): void {
+  const target = opts?.target ?? "meal";
+  const submitLabel = target === "preset" ? "Myセットに登録" : "食事に追加";
+  const title = target === "preset" ? "Myセットを手入力" : "手入力で追加";
   container.innerHTML = `
-    <h2 class="modal-title">手入力で追加</h2>
+    <h2 class="modal-title">${title}</h2>
     ${opts?.reason ? `<p class="muted">${escapeHtml(opts.reason)}</p>` : ""}
     <form id="meal-manual-form">
       ${
-        opts?.barcode
+        target === "meal" && opts?.barcode
           ? `<div class="field"><label>バーコード</label><input name="barcode" value="${escapeAttr(opts.barcode)}" readonly /></div>`
-          : `<div class="field"><label>バーコード（任意）</label><input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" placeholder="8〜14桁" /></div>`
+          : target === "meal"
+            ? `<div class="field"><label>バーコード（任意）</label><input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" placeholder="8〜14桁" /></div>`
+            : ""
       }
       <div class="field"><label>名称</label><input name="name" required maxlength="200" /></div>
       <div class="field"><label>kcal</label><input name="kcal" type="number" min="0" step="1" value="0" required /></div>
       <div class="field"><label>たんぱく質 (g)</label><input name="protein_g" type="number" min="0" step="0.1" value="0" required /></div>
       <div class="field"><label>脂質 (g)</label><input name="fat_g" type="number" min="0" step="0.1" value="0" required /></div>
       <div class="field"><label>炭水化物 (g)</label><input name="carbs_g" type="number" min="0" step="0.1" value="0" required /></div>
-      <button class="btn btn-primary btn-block" type="submit">食事に追加</button>
+      <button class="btn btn-primary btn-block" type="submit">${submitLabel}</button>
       <button class="btn btn-block modal-secondary" type="button" id="manual-cancel">キャンセル</button>
       <p id="manual-error" class="error"></p>
     </form>
@@ -114,19 +135,30 @@ function renderManualForm(
   document.getElementById("meal-manual-form")!.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target as HTMLFormElement);
-    const barcodeRaw = String(fd.get("barcode") ?? "").trim();
-    const body: MealCreate = {
-      log_date: logDate,
-      name: String(fd.get("name")),
-      kcal: Number(fd.get("kcal")),
-      protein_g: Number(fd.get("protein_g")),
-      fat_g: Number(fd.get("fat_g")),
-      carbs_g: Number(fd.get("carbs_g")),
-      food_preset_id: null,
-    };
-    if (barcodeRaw && validateBarcode(barcodeRaw)) body.barcode = barcodeRaw;
     try {
-      await api.addMeal(body);
+      if (target === "preset") {
+        const body: FoodPresetCreate = {
+          name: String(fd.get("name")),
+          kcal: Number(fd.get("kcal")),
+          protein_g: Number(fd.get("protein_g")),
+          fat_g: Number(fd.get("fat_g")),
+          carbs_g: Number(fd.get("carbs_g")),
+        };
+        await api.createPreset(body);
+      } else {
+        const barcodeRaw = String(fd.get("barcode") ?? "").trim();
+        const body: MealCreate = {
+          log_date: logDate,
+          name: String(fd.get("name")),
+          kcal: Number(fd.get("kcal")),
+          protein_g: Number(fd.get("protein_g")),
+          fat_g: Number(fd.get("fat_g")),
+          carbs_g: Number(fd.get("carbs_g")),
+          food_preset_id: null,
+        };
+        if (barcodeRaw && validateBarcode(barcodeRaw)) body.barcode = barcodeRaw;
+        await api.addMeal(body);
+      }
       onCancel();
       await onDone();
     } catch (err) {
@@ -202,7 +234,11 @@ async function startZxingScan(video: HTMLVideoElement, onCode: (code: string) =>
   };
 }
 
-export function openBarcodeFlow(logDate: string, onDone: () => Promise<void>): void {
+export function openBarcodeFlow(
+  logDate: string,
+  onDone: () => Promise<void>,
+  target: EntryTarget = "meal"
+): void {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `
@@ -235,7 +271,7 @@ export function openBarcodeFlow(logDate: string, onDone: () => Promise<void>): v
     body.innerHTML = `<p class="muted modal-loading">商品を検索中…</p>`;
     try {
       const lookup = await api.lookupBarcode(code);
-      renderConfirmForm(body, lookup, logDate, onDone, close);
+      renderConfirmForm(body, lookup, logDate, onDone, close, target);
     } catch (err) {
       const msg = String(err);
       const reason =
@@ -245,7 +281,7 @@ export function openBarcodeFlow(logDate: string, onDone: () => Promise<void>): v
             ? "Open Food Facts に接続できません。手入力してください。"
             : "検索に失敗しました。手入力してください。";
       showToast(reason);
-      renderManualForm(body, logDate, onDone, close, { barcode: code, reason });
+      renderManualForm(body, logDate, onDone, close, { barcode: code, reason, target });
     }
   };
 
@@ -276,7 +312,7 @@ export function openBarcodeFlow(logDate: string, onDone: () => Promise<void>): v
     document.getElementById("barcode-manual-only")!.addEventListener("click", () => {
       scanCleanup?.();
       scanCleanup = null;
-      renderManualForm(body, logDate, onDone, close);
+      renderManualForm(body, logDate, onDone, close, { target });
     });
 
     const runSearch = async (): Promise<void> => {
@@ -333,4 +369,17 @@ export function openBarcodeFlow(logDate: string, onDone: () => Promise<void>): v
   };
 
   void startScanUi();
+}
+
+export function openManualMealFlow(logDate: string, onDone: () => Promise<void>, target: EntryTarget = "meal"): void {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `<div class="modal-card"><div id="manual-modal-body"></div></div>`;
+  document.body.appendChild(overlay);
+  const body = overlay.querySelector("#manual-modal-body") as HTMLElement;
+  const close = (): void => overlay.remove();
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  renderManualForm(body, logDate, onDone, close, { target });
 }

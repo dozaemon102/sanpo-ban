@@ -872,6 +872,46 @@ body {
   cursor: pointer;
 }
 
+.record-action-btn--primary {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+
+.entry-menu-btn {
+  margin-bottom: 8px;
+}
+
+.preset-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.preset-list-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.preset-list-item strong {
+  display: block;
+  font-size: 0.9375rem;
+}
+
+.preset-list-item .muted {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+}
+
 .record-action-btn__icon svg {
   width: 16px;
   height: 16px;
@@ -884,4 +924,16 @@ body {
 
 .record-form.is-collapsed {
   display: none;
+}
+
+.record-meta {
+  margin: 0;
+  padding: 0 14px 12px;
+  font-size: 0.75rem;
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
 }

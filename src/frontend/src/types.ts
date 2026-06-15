@@ -19,6 +19,8 @@ export interface Profile {
   sex: Sex;
   neat_kcal: number;
   tef_rate: number;
+  stride_cm: number | null;
+  walking_speed_kmh: number | null;
   initial_weight_kg: number;
   setup_completed: boolean;
 }
@@ -30,6 +32,8 @@ export interface ProfileUpdate {
   current_weight_kg: number;
   neat_kcal?: number;
   tef_rate?: number;
+  stride_cm?: number | null;
+  walking_speed_kmh?: number | null;
   setup_completed?: boolean;
 }
 
@@ -52,7 +56,11 @@ export interface DashboardCards {
   intake_kcal: number;
   bmr_kcal: number | null;
   exercise_kcal: number;
+  walk_kcal: number;
   steps: number;
+  stride_cm: number | null;
+  walking_speed_kmh: number | null;
+  walk_calc_method: "met" | "simple";
   body_fat_pct: number | null;
   bmi: number | null;
   lbm_kg: number | null;
@@ -88,6 +96,15 @@ export interface FoodPreset {
   fat_g: number;
   carbs_g: number;
   sort_order: number;
+}
+
+export interface FoodPresetCreate {
+  name: string;
+  kcal: number;
+  protein_g: number;
+  fat_g: number;
+  carbs_g: number;
+  sort_order?: number;
 }
 
 export interface FoodLookupResponse {

@@ -54,8 +54,42 @@ def suggest_targets(
     }
 
 
-def walk_burn_kcal(steps: int, weight_kg: float) -> int:
+def walk_burn_kcal_simple(steps: int, weight_kg: float) -> int:
     return int(steps * weight_kg * 0.0005)
+
+
+def walking_met(speed_kmh: float) -> float:
+    if speed_kmh < 3.2:
+        return 2.5
+    if speed_kmh < 4.8:
+        return 3.5
+    if speed_kmh < 6.4:
+        return 4.3
+    return 5.0
+
+
+def walk_burn_kcal_met(steps: int, weight_kg: float, stride_cm: float, speed_kmh: float) -> int:
+    distance_km = steps * (stride_cm / 100) / 1000
+    hours = distance_km / speed_kmh
+    return int(walking_met(speed_kmh) * weight_kg * hours)
+
+
+def walk_burn_kcal(
+    steps: int,
+    weight_kg: float,
+    *,
+    stride_cm: float | None = None,
+    speed_kmh: float | None = None,
+) -> tuple[int, str]:
+    if (
+        steps > 0
+        and stride_cm is not None
+        and speed_kmh is not None
+        and stride_cm > 0
+        and speed_kmh > 0
+    ):
+        return walk_burn_kcal_met(steps, weight_kg, stride_cm, speed_kmh), "met"
+    return walk_burn_kcal_simple(steps, weight_kg), "simple"
 
 
 def katch_mcardle_bmr(lbm_kg: float) -> int:

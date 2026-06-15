@@ -1,9 +1,32 @@
 import pytest
-from app.services.calculations import katch_mcardle_bmr, tef_kcal, walk_burn_kcal
+from app.services.calculations import (
+    katch_mcardle_bmr,
+    tef_kcal,
+    walk_burn_kcal,
+    walk_burn_kcal_met,
+    walk_burn_kcal_simple,
+)
 
 
-def test_walk_burn_kcal():
-    assert walk_burn_kcal(10000, 72) == 360
+def test_walk_burn_kcal_simple():
+    assert walk_burn_kcal_simple(10000, 72) == 360
+
+
+def test_walk_burn_kcal_met():
+    # 10000 steps, 70cm stride => 7km, 4km/h => 1.75h, MET 3.5, 72kg
+    assert walk_burn_kcal_met(10000, 72, 70, 4.0) == int(3.5 * 72 * 1.75)
+
+
+def test_walk_burn_kcal_uses_met_when_params_present():
+    kcal, method = walk_burn_kcal(10000, 72, stride_cm=70, speed_kmh=4.0)
+    assert method == "met"
+    assert kcal == walk_burn_kcal_met(10000, 72, 70, 4.0)
+
+
+def test_walk_burn_kcal_fallback_without_stride():
+    kcal, method = walk_burn_kcal(10000, 72, speed_kmh=4.0)
+    assert method == "simple"
+    assert kcal == 360
 
 
 def test_katch_mcardle_bmr():
@@ -260,3 +283,41 @@ def test_neat_tef_affects_balance(client):
     after = client.get("/api/v1/dashboard/top", params={"date": "2026-06-13"}).json()
     assert after["balance"]["breakdown"]["neat_kcal"] == 300
     assert after["balance"]["value"] != before["balance"]["value"]
+
+
+def test_health_sync_walk_params_and_met_dashboard(client):
+    client.put(
+        "/api/v1/profile",
+        json={
+            "height_cm": 175,
+            "birth_date": "1990-01-15",
+            "sex": "male",
+            "current_weight_kg": 72,
+            "neat_kcal": 180,
+            "tef_rate": 0.10,
+            "stride_cm": 70,
+            "walking_speed_kmh": 4.0,
+            "setup_completed": True,
+        },
+    )
+    r = client.post(
+        "/api/v1/sync/health",
+        json={
+            "date": "2026-06-15",
+            "steps": 10000,
+            "stride_cm": 72,
+            "walking_speed_kmh": 4.2,
+        },
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["steps"] == 10000
+    assert data["stride_cm"] == 72
+    assert data["walking_speed_kmh"] == 4.2
+
+    dash = client.get("/api/v1/dashboard/top", params={"date": "2026-06-15"}).json()
+    cards = dash["cards"]
+    assert cards["stride_cm"] == 72
+    assert cards["walking_speed_kmh"] == 4.2
+    assert cards["walk_calc_method"] == "met"
+    assert cards["walk_kcal"] > cards["steps"] * 72 * 0.0005

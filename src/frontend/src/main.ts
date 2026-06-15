@@ -1,6 +1,6 @@
 import "./styles/notion.css";
 import { api } from "./api/client";
-import { openBarcodeFlow } from "./barcode-flow";
+import { openMealEntryFlow } from "./meal-entry-flow";
 import { mountHistoryChart } from "./history-chart";
 import type {
   DashboardTop,
@@ -392,7 +392,7 @@ async function renderHistory(): Promise<void> {
 
 async function renderMeals(): Promise<void> {
   const date = selectedDate;
-  const [presets, meals] = await Promise.all([api.getPresets(), api.getMeals(date)]);
+  const meals = await api.getMeals(date);
   const totals = meals.reduce(
     (acc, m) => ({
       protein_g: acc.protein_g + m.protein_g,
@@ -437,24 +437,12 @@ async function renderMeals(): Promise<void> {
         </div>
         <div class="record-section__body">${itemsHtml}</div>
         <div class="record-section__actions">
-          <button type="button" class="record-action-btn" data-barcode-btn>
-            <span class="record-action-btn__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h2v10H4zM8 7h1v10H8zM11 7h2v10h-2zM15 7h1v10h-1zM18 7h2v10h-2z"/></svg>
-            </span>
-            バーコード
+          <button type="button" class="record-action-btn record-action-btn--primary" data-entry-btn>
+            入力
           </button>
         </div>
       </section>`;
   }).join("");
-
-  const presetsHtml = presets.length
-    ? presets
-        .map(
-          (p) =>
-            `<button class="preset-chip" data-id="${p.id}"><strong>${p.name}</strong><span>${p.kcal} kcal</span></button>`
-        )
-        .join("")
-    : `<p class="muted record-empty">Myセットがありません</p>`;
 
   app.innerHTML = `
     <div class="page page--record">
@@ -473,22 +461,14 @@ async function renderMeals(): Promise<void> {
         <div class="record-summary__label">P / F / C 合計</div>
         <div class="record-summary__value">${totals.protein_g.toFixed(1)} <span class="muted">/ ${totals.fat_g.toFixed(1)} / ${totals.carbs_g.toFixed(1)} g</span></div>
       </div>
-      <p class="section-title">Myセット</p>
-      <div class="preset-scroll">${presetsHtml}</div>
       ${slotSections}
     </div>
     ${renderTabs()}
   `;
   bindTabs();
   bindDateStrip("meals", renderMeals);
-  document.querySelectorAll("[data-barcode-btn]").forEach((el) => {
-    el.addEventListener("click", () => openBarcodeFlow(date, renderMeals));
-  });
-  presets.forEach((p) => {
-    document.querySelector(`[data-id="${p.id}"]`)!.addEventListener("click", async () => {
-      await api.addMealFromPreset(p, date);
-      await renderMeals();
-    });
+  document.querySelectorAll("[data-entry-btn]").forEach((el) => {
+    el.addEventListener("click", () => openMealEntryFlow(date, renderMeals));
   });
   bindDeleteButtons('[data-delete-kind="meal"]', api.deleteMeal, renderMeals);
 }
@@ -502,8 +482,18 @@ async function renderExercise(): Promise<void> {
     api.getDashboardTop(date),
   ]);
   const templateNames = Object.fromEntries(templates.map((t) => [t.code, t.name]));
-  const totalKcal = dashboard.cards.exercise_kcal;
-  const steps = dashboard.cards.steps;
+  const cards = dashboard.cards;
+  const steps = cards.steps;
+  const walkKcal = cards.walk_kcal;
+  const treadmillKcal = treadmill.reduce((s, t) => s + t.calculated_kcal, 0);
+  const strengthKcal = strength.reduce((s, t) => s + t.calculated_kcal, 0);
+  const totalExerciseKcal = walkKcal + treadmillKcal + strengthKcal;
+  const walkMeta =
+    cards.stride_cm != null && cards.walking_speed_kmh != null
+      ? `歩幅 ${cards.stride_cm} cm · 速度 ${cards.walking_speed_kmh} km/h`
+      : cards.walk_calc_method === "met"
+        ? ""
+        : "歩幅・速度未設定（簡易式）";
 
   const treadmillItems = treadmill.length
     ? treadmill
@@ -544,7 +534,7 @@ async function renderExercise(): Promise<void> {
         </div>
         <div class="record-banner__total">
           <span class="record-banner__total-label">消費</span>
-          <span class="record-banner__total-value">${totalKcal} kcal</span>
+          <span class="record-banner__total-value">${totalExerciseKcal} kcal</span>
         </div>
       </header>
       ${renderDateStrip(date, "exercise")}
@@ -554,14 +544,11 @@ async function renderExercise(): Promise<void> {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="14" cy="6" r="2.2" fill="currentColor" opacity=".25"/><path d="M4 19l5-7 3 3 5-8 3 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
           <div class="record-section__title">
-            <strong>運動</strong>
-            <span class="record-section__value">${totalKcal} kcal</span>
+            <strong>運動（歩数）</strong>
+            <span class="record-section__value">${steps.toLocaleString()} 歩 · ${walkKcal} kcal</span>
           </div>
         </div>
-        <div class="record-subrow">
-          <span class="record-subrow__label">[ヘルスケア] 歩数</span>
-          <span class="record-subrow__value">${steps.toLocaleString()} 歩</span>
-        </div>
+        ${walkMeta ? `<p class="record-meta muted">${walkMeta}</p>` : ""}
       </section>
       <section class="record-section exercise-section">
         <div class="record-section__head">
@@ -570,7 +557,7 @@ async function renderExercise(): Promise<void> {
           </div>
           <div class="record-section__title">
             <strong>トレッドミル</strong>
-            <span class="record-section__value">${treadmill.reduce((s, t) => s + t.calculated_kcal, 0)} kcal</span>
+            <span class="record-section__value">${treadmillKcal} kcal</span>
           </div>
           <button type="button" class="record-section__edit" data-toggle-form="tm-form" aria-label="トレッドミルを記録">記録</button>
         </div>
@@ -588,7 +575,7 @@ async function renderExercise(): Promise<void> {
           </div>
           <div class="record-section__title">
             <strong>筋トレ</strong>
-            <span class="record-section__value">${strength.reduce((s, t) => s + t.calculated_kcal, 0)} kcal</span>
+            <span class="record-section__value">${strengthKcal} kcal</span>
           </div>
           <button type="button" class="record-section__edit" data-toggle-form="st-form" aria-label="筋トレを記録">記録</button>
         </div>
@@ -648,7 +635,13 @@ async function renderSettings(existing: Profile | null, isSetup = false): Promis
           </select>
         </div>
         <div class="field"><label>体重 (kg)</label><input name="current_weight_kg" type="number" step="0.1" value="${p?.initial_weight_kg ?? 72}" required /></div>
-        <div class="field"><label>NEAT (kcal)</label><input name="neat_kcal" type="number" value="${p?.neat_kcal ?? 200}" required /></div>
+        <div class="field">
+          <label>NEAT（屋内）kcal</label>
+          <input name="neat_kcal" type="number" value="${p?.neat_kcal ?? 180}" required />
+          <p class="field-hint muted">家の中だけの活動（料理・掃除など）。目安 150〜220 kcal。歩数は屋外分として別計上。</p>
+        </div>
+        <div class="field"><label>歩幅 (cm) <span class="muted">任意</span></label><input name="stride_cm" type="number" step="0.1" min="30" max="120" value="${p?.stride_cm ?? ""}" placeholder="例: 70" /></div>
+        <div class="field"><label>歩行速度 (km/h) <span class="muted">任意</span></label><input name="walking_speed_kmh" type="number" step="0.1" min="1" max="10" value="${p?.walking_speed_kmh ?? ""}" placeholder="例: 4.0" /></div>
         <div class="field"><label>TEF 率 (%)</label><input name="tef_pct" type="number" step="1" value="${((p?.tef_rate ?? 0.1) * 100).toFixed(0)}" required /></div>
         <button class="btn btn-primary btn-block" type="submit">${isSetup ? "はじめる" : "保存"}</button>
         <p id="settings-error" class="error"></p>
@@ -660,6 +653,8 @@ async function renderSettings(existing: Profile | null, isSetup = false): Promis
   document.getElementById("settings-form")!.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target as HTMLFormElement);
+    const strideRaw = String(fd.get("stride_cm") ?? "").trim();
+    const speedRaw = String(fd.get("walking_speed_kmh") ?? "").trim();
     const body: ProfileUpdate = {
       height_cm: Number(fd.get("height_cm")),
       birth_date: String(fd.get("birth_date")),
@@ -669,6 +664,8 @@ async function renderSettings(existing: Profile | null, isSetup = false): Promis
       tef_rate: Number(fd.get("tef_pct")) / 100,
       setup_completed: true,
     };
+    if (strideRaw) body.stride_cm = Number(strideRaw);
+    if (speedRaw) body.walking_speed_kmh = Number(speedRaw);
     try {
       await api.putProfile(body);
       if (isSetup) {

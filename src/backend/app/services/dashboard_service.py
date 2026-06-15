@@ -146,10 +146,29 @@ def sum_meals(db: Session, log_date: date) -> MacroTotals:
     )
 
 
-def burn_for_date(db: Session, on_date: date, weight_kg: float) -> BurnTotals:
+def resolve_walk_params(
+    db: Session, on_date: date, profile: UserProfile
+) -> tuple[float | None, float | None]:
+    steps_row = db.scalar(select(DailySteps).where(DailySteps.step_date == on_date))
+    stride_cm: float | None = None
+    speed_kmh: float | None = None
+    if steps_row:
+        if steps_row.stride_cm is not None:
+            stride_cm = float(steps_row.stride_cm)
+        if steps_row.walking_speed_kmh is not None:
+            speed_kmh = float(steps_row.walking_speed_kmh)
+    if stride_cm is None and profile.stride_cm is not None:
+        stride_cm = float(profile.stride_cm)
+    if speed_kmh is None and profile.walking_speed_kmh is not None:
+        speed_kmh = float(profile.walking_speed_kmh)
+    return stride_cm, speed_kmh
+
+
+def burn_for_date(db: Session, on_date: date, weight_kg: float, profile: UserProfile) -> BurnTotals:
     steps_row = db.scalar(select(DailySteps).where(DailySteps.step_date == on_date))
     steps = steps_row.steps if steps_row else 0
-    walk = walk_burn_kcal(steps, weight_kg)
+    stride_cm, speed_kmh = resolve_walk_params(db, on_date, profile)
+    walk, _ = walk_burn_kcal(steps, weight_kg, stride_cm=stride_cm, speed_kmh=speed_kmh)
 
     day_start = datetime.combine(on_date, time.min, tzinfo=JST)
     day_end = day_start + timedelta(days=1)
@@ -269,7 +288,13 @@ class _HistoryRangeCache:
         row = self.weight_by_date.get(on_date)
         weight = float(row.weight_kg) if row else float(self.profile.initial_weight_kg)
         steps = self.steps_by_date.get(on_date)
-        walk = walk_burn_kcal(steps, weight) if steps is not None else 0
+        stride_cm, speed_kmh = resolve_walk_params(self.db, on_date, self.profile)
+        walk, _ = walk_burn_kcal(
+            steps or 0,
+            weight,
+            stride_cm=stride_cm,
+            speed_kmh=speed_kmh,
+        ) if steps is not None else 0
         treadmill = self.treadmill_by_date.get(on_date, 0)
         strength = self.strength_by_date.get(on_date, 0)
         total = walk + treadmill + strength
@@ -327,7 +352,14 @@ class _HistoryRangeCache:
 def daily_snapshot(db: Session, on_date: date, profile: UserProfile) -> dict:
     intake = sum_meals(db, on_date)
     weight_kg = latest_weight_kg(db, on_date, profile)
-    burn = burn_for_date(db, on_date, weight_kg)
+    burn = burn_for_date(db, on_date, weight_kg, profile)
+    stride_cm, speed_kmh = resolve_walk_params(db, on_date, profile)
+    _, walk_calc_method = walk_burn_kcal(
+        steps_for_date(db, on_date),
+        weight_kg,
+        stride_cm=stride_cm,
+        speed_kmh=speed_kmh,
+    )
     lbm_kg, body_source = resolve_lbm_kg(db, on_date, profile)
     bmr_kcal = katch_mcardle_bmr(lbm_kg) if lbm_kg is not None else None
     neat = profile.neat_kcal
@@ -339,6 +371,10 @@ def daily_snapshot(db: Session, on_date: date, profile: UserProfile) -> dict:
     return {
         "intake_kcal": intake.kcal,
         "exercise_kcal": burn.total_kcal,
+        "walk_kcal": burn.walk_kcal,
+        "stride_cm": stride_cm,
+        "walking_speed_kmh": speed_kmh,
+        "walk_calc_method": walk_calc_method,
         "steps": steps_for_date(db, on_date),
         "weight_kg": weight_kg,
         "bmr_kcal": bmr_kcal,
@@ -375,7 +411,11 @@ def build_dashboard_top(db: Session, on_date: date | None = None) -> DashboardTo
         intake_kcal=snap["intake_kcal"],
         bmr_kcal=snap["bmr_kcal"],
         exercise_kcal=snap["exercise_kcal"],
+        walk_kcal=snap["walk_kcal"],
         steps=snap["steps"],
+        stride_cm=snap["stride_cm"],
+        walking_speed_kmh=snap["walking_speed_kmh"],
+        walk_calc_method=snap["walk_calc_method"],
         body_fat_pct=snap["body_fat_pct"],
         bmi=snap["bmi"],
         lbm_kg=snap["lbm_kg"],

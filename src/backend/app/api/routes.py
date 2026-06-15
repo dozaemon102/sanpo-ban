@@ -44,7 +44,7 @@ from app.services.weight_log_factory import create_weight_log
 
 router = APIRouter(prefix="/api/v1")
 
-DEFAULT_NEAT = 200
+DEFAULT_NEAT = 180
 DEFAULT_TEF = Decimal("0.100")
 
 
@@ -55,6 +55,8 @@ def _profile_response(p: UserProfile) -> ProfileResponse:
         sex=p.sex,
         neat_kcal=p.neat_kcal,
         tef_rate=float(p.tef_rate),
+        stride_cm=float(p.stride_cm) if p.stride_cm is not None else None,
+        walking_speed_kmh=float(p.walking_speed_kmh) if p.walking_speed_kmh is not None else None,
         initial_weight_kg=float(p.initial_weight_kg),
         setup_completed=p.setup_completed,
     )
@@ -93,6 +95,10 @@ def put_profile(body: ProfileUpdate, db: Session = Depends(get_db)) -> ProfileRe
         profile.tef_rate = Decimal(str(body.tef_rate))
     elif profile.tef_rate is None:
         profile.tef_rate = DEFAULT_TEF
+    if body.stride_cm is not None:
+        profile.stride_cm = Decimal(str(body.stride_cm))
+    if body.walking_speed_kmh is not None:
+        profile.walking_speed_kmh = Decimal(str(body.walking_speed_kmh))
     profile.setup_completed = body.setup_completed
     profile.updated_at = now
 
@@ -265,11 +271,35 @@ def sync_health(body: HealthSyncRequest, db: Session = Depends(get_db)) -> dict:
         if steps_row:
             steps_row.steps = body.steps
             steps_row.synced_at = now
+            if body.stride_cm is not None:
+                steps_row.stride_cm = Decimal(str(body.stride_cm))
+            if body.walking_speed_kmh is not None:
+                steps_row.walking_speed_kmh = Decimal(str(body.walking_speed_kmh))
         else:
             db.add(
-                DailySteps(step_date=body.date, steps=body.steps, source="shortcuts", synced_at=now)
+                DailySteps(
+                    step_date=body.date,
+                    steps=body.steps,
+                    stride_cm=Decimal(str(body.stride_cm)) if body.stride_cm is not None else None,
+                    walking_speed_kmh=(
+                        Decimal(str(body.walking_speed_kmh))
+                        if body.walking_speed_kmh is not None
+                        else None
+                    ),
+                    source="shortcuts",
+                    synced_at=now,
+                )
             )
         steps_logged = True
+    elif body.stride_cm is not None or body.walking_speed_kmh is not None:
+        steps_row = db.scalar(select(DailySteps).where(DailySteps.step_date == body.date))
+        if steps_row:
+            if body.stride_cm is not None:
+                steps_row.stride_cm = Decimal(str(body.stride_cm))
+            if body.walking_speed_kmh is not None:
+                steps_row.walking_speed_kmh = Decimal(str(body.walking_speed_kmh))
+            steps_row.synced_at = now
+            steps_logged = True
 
     weight_logged = False
     body_composition_logged = False
@@ -311,6 +341,12 @@ def sync_health(body: HealthSyncRequest, db: Session = Depends(get_db)) -> dict:
     return {
         "ok": True,
         "steps": steps_row.steps if steps_row else None,
+        "stride_cm": float(steps_row.stride_cm) if steps_row and steps_row.stride_cm is not None else None,
+        "walking_speed_kmh": (
+            float(steps_row.walking_speed_kmh)
+            if steps_row and steps_row.walking_speed_kmh is not None
+            else None
+        ),
         "steps_logged": steps_logged,
         "weight_logged": weight_logged,
         "body_composition_logged": body_composition_logged,
