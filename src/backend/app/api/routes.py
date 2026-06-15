@@ -49,6 +49,7 @@ from app.services.calculations import (
 )
 from app.services.dashboard_service import build_dashboard, get_profile, week_summary
 from app.services.open_food_facts import lookup_barcode
+from app.services.weight_log_factory import create_weight_log
 
 router = APIRouter(prefix="/api/v1")
 
@@ -244,8 +245,11 @@ def list_weights(limit: int = 30, db: Session = Depends(get_db)) -> list[WeightL
 
 @router.post("/weights", response_model=WeightResponse, status_code=201)
 def create_weight(body: WeightCreate, db: Session = Depends(get_db)) -> WeightLog:
-    row = WeightLog(
-        weight_kg=Decimal(str(body.weight_kg)),
+    row = create_weight_log(
+        weight_kg=body.weight_kg,
+        bmi=body.bmi,
+        lbm_kg=body.lbm_kg,
+        body_fat_pct=body.body_fat_pct,
         source="manual",
         logged_at=body.logged_at or now_jst(),
     )
@@ -268,26 +272,41 @@ def delete_weight(weight_id: int, db: Session = Depends(get_db)) -> Response:
 @router.post("/sync/health")
 def sync_health(body: HealthSyncRequest, db: Session = Depends(get_db)) -> dict:
     now = now_jst()
-    steps_row = db.scalar(select(DailySteps).where(DailySteps.step_date == body.date))
-    if steps_row:
-        steps_row.steps = body.steps
-        steps_row.synced_at = now
-    else:
-        db.add(
-            DailySteps(step_date=body.date, steps=body.steps, source="shortcuts", synced_at=now)
-        )
+    steps_logged = False
+    if body.steps is not None:
+        steps_row = db.scalar(select(DailySteps).where(DailySteps.step_date == body.date))
+        if steps_row:
+            steps_row.steps = body.steps
+            steps_row.synced_at = now
+        else:
+            db.add(
+                DailySteps(step_date=body.date, steps=body.steps, source="shortcuts", synced_at=now)
+            )
+        steps_logged = True
+
     weight_logged = False
     if body.weight_kg is not None:
         db.add(
-            WeightLog(
-                weight_kg=Decimal(str(body.weight_kg)),
+            create_weight_log(
+                weight_kg=body.weight_kg,
+                bmi=body.bmi,
+                lbm_kg=body.lbm_kg,
+                body_fat_pct=body.body_fat_pct,
                 source="shortcuts",
                 logged_at=now,
             )
         )
         weight_logged = True
+
     db.commit()
-    return {"ok": True, "steps": body.steps, "weight_logged": weight_logged}
+
+    steps_row = db.scalar(select(DailySteps).where(DailySteps.step_date == body.date))
+    return {
+        "ok": True,
+        "steps": steps_row.steps if steps_row else None,
+        "steps_logged": steps_logged,
+        "weight_logged": weight_logged,
+    }
 
 
 @router.get("/walks", response_model=list[WalkResponse])

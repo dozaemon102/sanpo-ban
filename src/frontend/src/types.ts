@@ -39,6 +39,9 @@ export interface DashboardToday {
   remaining: { kcal: number; protein_g: number; fat_g: number; carbs_g: number };
   steps: number;
   weight_kg: number | null;
+  bmi: number | null;
+  lbm_kg: number | null;
+  body_fat_pct: number | null;
   walk_sessions_today: number;
 }
 
@@ -127,6 +130,9 @@ export interface StrengthLog {
 export interface WeightLog {
   id: number;
   weight_kg: number;
+  bmi: number | null;
+  lbm_kg: number | null;
+  body_fat_pct: number | null;
   source: string;
   logged_at: string;
 }

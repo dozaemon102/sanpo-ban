@@ -69,6 +69,9 @@ class WeightLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     weight_kg: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    bmi: Mapped[Decimal | None] = mapped_column(Numeric(4, 1), nullable=True)
+    lbm_kg: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    body_fat_pct: Mapped[Decimal | None] = mapped_column(Numeric(4, 1), nullable=True)
     source: Mapped[str] = mapped_column(Enum("manual", "shortcuts", name="weight_source_enum"), nullable=False)
     logged_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
 

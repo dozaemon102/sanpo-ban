@@ -31,7 +31,7 @@ def require_setup(profile: UserProfile) -> None:
         raise profile_not_setup()
 
 
-def latest_weight_kg(db: Session, on_date: date, profile: UserProfile) -> float:
+def latest_weight_entry(db: Session, on_date: date, profile: UserProfile) -> WeightLog | None:
     day_start = datetime.combine(on_date, time.min, tzinfo=JST)
     day_end = day_start + timedelta(days=1)
     row = db.scalar(
@@ -41,11 +41,19 @@ def latest_weight_kg(db: Session, on_date: date, profile: UserProfile) -> float:
         .limit(1)
     )
     if row:
+        return row
+    return db.scalar(select(WeightLog).order_by(WeightLog.logged_at.desc()).limit(1))
+
+
+def latest_weight_kg(db: Session, on_date: date, profile: UserProfile) -> float:
+    row = latest_weight_entry(db, on_date, profile)
+    if row:
         return float(row.weight_kg)
-    latest = db.scalar(select(WeightLog).order_by(WeightLog.logged_at.desc()).limit(1))
-    if latest:
-        return float(latest.weight_kg)
     return float(profile.initial_weight_kg)
+
+
+def _optional_float(value: Decimal | None) -> float | None:
+    return float(value) if value is not None else None
 
 
 def sum_meals(db: Session, log_date: date) -> MacroTotals:
@@ -101,7 +109,8 @@ def build_dashboard(db: Session, on_date: date | None = None) -> DashboardToday:
     require_setup(profile)
 
     intake = sum_meals(db, on_date)
-    weight = latest_weight_kg(db, on_date, profile)
+    weight_entry = latest_weight_entry(db, on_date, profile)
+    weight = float(weight_entry.weight_kg) if weight_entry else float(profile.initial_weight_kg)
     burn = burn_for_date(db, on_date, weight)
 
     targets = TargetMacros(
@@ -134,6 +143,9 @@ def build_dashboard(db: Session, on_date: date | None = None) -> DashboardToday:
         remaining=remaining,
         steps=steps_row.steps if steps_row else 0,
         weight_kg=weight,
+        bmi=_optional_float(weight_entry.bmi) if weight_entry else None,
+        lbm_kg=_optional_float(weight_entry.lbm_kg) if weight_entry else None,
+        body_fat_pct=_optional_float(weight_entry.body_fat_pct) if weight_entry else None,
         walk_sessions_today=int(walk_count or 0),
     )
 

@@ -61,6 +61,9 @@ class DashboardToday(BaseModel):
     remaining: MacroTotals
     steps: int = 0
     weight_kg: float | None = None
+    bmi: float | None = None
+    lbm_kg: float | None = None
+    body_fat_pct: float | None = None
     walk_sessions_today: int = 0
 
 
@@ -114,12 +117,18 @@ class MealDuplicate(BaseModel):
 
 class WeightCreate(BaseModel):
     weight_kg: float = Field(ge=30, le=300)
+    bmi: float | None = Field(default=None, ge=10, le=80)
+    lbm_kg: float | None = Field(default=None, ge=20, le=200)
+    body_fat_pct: float | None = Field(default=None, ge=1, le=75)
     logged_at: datetime | None = None
 
 
 class WeightResponse(BaseModel):
     id: int
     weight_kg: float
+    bmi: float | None = None
+    lbm_kg: float | None = None
+    body_fat_pct: float | None = None
     source: str
     logged_at: datetime
 
@@ -128,12 +137,27 @@ class WeightResponse(BaseModel):
 
 class HealthSyncRequest(BaseModel):
     date: date
-    steps: int = Field(ge=0)
+    steps: int | None = Field(default=None, ge=0)
     weight_kg: float | None = Field(default=None, ge=30, le=300)
+    bmi: float | None = Field(default=None, ge=10, le=80)
+    lbm_kg: float | None = Field(default=None, ge=20, le=200)
+    body_fat_pct: float | None = Field(default=None, ge=1, le=75)
 
-    @field_validator("weight_kg", mode="before")
+    @field_validator("steps", mode="before")
     @classmethod
-    def normalize_optional_weight(cls, value: object) -> object | None:
+    def normalize_optional_steps(cls, value: object) -> object | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+            value = stripped
+        return value
+
+    @field_validator("weight_kg", "bmi", "lbm_kg", "body_fat_pct", mode="before")
+    @classmethod
+    def normalize_optional_number(cls, value: object) -> object | None:
         if value is None:
             return None
         if isinstance(value, str):
