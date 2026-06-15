@@ -1,11 +1,12 @@
-# 基本設計書: 散歩判（sanpo-ban）
+# 基本設計書: 健康管理（kenko-kanri）
 
 ## 1. 概要
 
-承認済み要件定義書に基づき、個人向けダイエットダッシュボードのシステム構成・モジュール・画面・データ概念・計算方針を定義する。Phase 1（v1）は PC 上 Docker Compose で完結し、MySQL + REST API + スマホ向け Web UI を提供する。
+承認済み要件定義書に基づき、個人向けダイエット・体組成ダッシュボードのシステム構成・モジュール・画面・データ概念・計算方針を定義する。v1/v2 は PC / Pi 上 Docker Compose で稼働済み。**v3** では UI 刷新・収支モデル変更・アプリ全面リネーム・散歩/週タブ廃止を行う。
 
 - **要件定義書:** `docs/features/sanpo-ban/requirements.md`
-- **対象バージョン:** v1（Phase 1）+ **v2 追記（バーコード / Open Food Facts）**
+- **対象バージョン:** v1 + v2 + **v3（UI 刷新・収支モデル・リネーム）**
+- **旧称:** 散歩判（sanpo-ban）— v3 でユーザー向け表記・slug を `kenko-kanri` に統一
 
 ## 2. 機能構成
 
@@ -13,17 +14,20 @@
 
 | モジュール | 責務 | 対応する要件 ID |
 |-----------|------|----------------|
-| Profile | 身体情報・目標 kcal/PFC の管理、TDEE 自動提案 | FR-001〜004 |
-| Dashboard | 当日の摂取・消費・残量・歩数・体重の集計表示 | FR-005〜009 |
-| Meals | 食品プリセット・食事ログの CRUD | FR-010〜013 |
-| Body | 体重の手入力・履歴 | FR-017〜019 |
-| HealthSync | iPhone ショートカットからの歩数・体重取込 | FR-020〜023 |
-| Walks | 散歩セッション・発見メモ | FR-024〜026 |
+| Profile | 身体情報の管理。**v3:** NEAT・TEF 率。目標 kcal/PFC は廃止 | FR-001, FR-004, FR-049 |
+| Dashboard | **v3:** TOP 9 カード（収支中心）。旧: 摂取・消費・残量 | FR-041, FR-044〜046 |
+| Meals | 食品 Myセット・食事ログの CRUD | FR-010〜013, FR-050, FR-051 |
+| Body | 体重・体組成の手入力・履歴 | FR-017〜019, FR-046 |
+| HealthSync | iPhone ショートカットからの歩数・体重・体組成取込 | FR-020〜023 |
+| Walks | ~~散歩セッション~~ **v3 廃止** | ~~FR-024〜026~~ |
 | Exercises | トレッドミル・筋トレ（クイック）記録と消費 kcal 算出 | FR-027〜031 |
-| Summary | 直近 7 日の集計・推移 | FR-033 |
-| Frontend Shell | 画面遷移・PWA シェル・API クライアント | FR-009, NFR-008 |
+| Summary | ~~週タブ単独画面~~ **v3 廃止**（CardHistory に統合） | ~~FR-033~~ |
+| Frontend Shell | 画面遷移・PWA シェル・API クライアント。**v3:** 4 タブ | FR-048, FR-052, FR-053 |
 | **BarcodeLookup（v2）** | **バーコード → Open Food Facts 参照・栄養情報正規化** | **FR-015, FR-037〜039** |
 | **RecordDelete（v1.1）** | **食事・散歩・運動・体重の誤記録削除 UI** | **FR-013, FR-036** |
+| **Balance（v3）** | **収支集計（摂取 − BMR − NEAT − 運動 − TEF）** | **FR-041, FR-046, FR-047** |
+| **CardHistory（v3）** | **TOP カード別の日/週/月/年推移** | **FR-045** |
+| **Settings（v3）** | **身体情報・NEAT・TEF 率の編集** | **FR-049, FR-043** |
 
 ### 2.2 機能フロー（概要）
 
@@ -228,6 +232,8 @@
 | NFR-008 | 今日画面に「散歩した」FAB。食事はプリセットを最初の行に固定 |
 | **NFR-009** | **OFF 参照は backend 内 5 秒タイムアウト。失敗は即フォールバック** |
 | **NFR-010** | **Pi からインターネット egress 必須（Tailscale 利用時も Pi 側 DNS 解決）** |
+| **NFR-011** | **TOP 9 カードを 1 画面スクロールで到達。収支 API を Dashboard に集約** |
+| **NFR-012** | **manifest・UI 文言を「健康管理」に統一** |
 
 ## 8. 要件トレーサビリティ
 
@@ -244,7 +250,8 @@
 | FR-030〜031 | Exercises: Strength、種目テンプレ |
 | FR-033 | Summary モジュール、週画面 |
 | **FR-015, FR-037〜039** | **BarcodeLookup モジュール、食事画面バーコードフロー、OFF 連携** |
-| **FR-036** | **各画面の当日一覧 + 削除 API（v1.1 実装済）** |
+| **FR-036** | **各画面の当日一覧 + 削除 API（v1.1 実装済。v3 で散歩削除 UI 廃止）** |
+| **FR-040〜053** | **§10 v3: Balance, CardHistory, Settings, リネーム, 4 タブ UI** |
 
 ## 9. 未決事項
 
@@ -269,3 +276,117 @@
 | 2026-06-13 | 初版作成 |
 | 2026-06-13 | OPN-002: トレッドミル中スマホ非携行前提に変更（歩数控除ロジック削除） |
 | 2026-06-13 | **v2:** バーコード / OFF 連携、BarcodeLookup モジュール、OPN-006/007 解消 |
+| 2026-06-14 | **v3:** 収支モデル、TOP 9 カード、CardHistory、Settings、リネーム方針、Walks/Summary 廃止 |
+
+---
+
+## 10. v3 追記 — 収支ダッシュボード・UI 刷新
+
+### 10.1 カロリー収支モデル（FR-041〜043, FR-046）
+
+**収支（kcal）:**
+
+```
+balance = intake − bmr − neat − exercise − tef
+```
+
+| 項 | 算出 |
+|----|------|
+| intake | 当日 MealLog の kcal 合計 |
+| bmr | Katch–McArdle: `370 + 21.6 × LBM(kg)` |
+| neat | UserProfile.neat_kcal（**初期 200**） |
+| tef | `intake × tef_rate`（**初期 0.10**） |
+| exercise | 歩数 kcal + トレッドミル + 筋トレ（v1 式を継続） |
+
+- **符号:** マイナス = 赤字 = 痩せ方向。目標赤字ラインは表示しない（FR-047）
+- **LBM 解決:** 当日 WeightLog → なければ最新 WeightLog → なければ **bmr 不可**
+  - LBM 未同期: 基礎代謝カードは同期促し、`balance` は `null`（UI で `--`）
+- **Mifflin-St Jeor / TDEE / 目標 kcal・PFC:** v3 UI から廃止。DB 列は移行期間残置可（詳細設計）
+
+### 10.2 TOP 画面（FR-044, FR-048）
+
+**下部タブ:** TOP / 食事 / 運動 / 設定（散歩・週タブ廃止）
+
+**カード順（横スライド、収支のみ大サイズ）:**
+
+1. 収支（balance）
+2. 体重（kg）
+3. 摂取（intake kcal）
+4. 基礎代謝（bmr）
+5. 消費（exercise total）
+6. 歩数
+7. 体脂肪率（%）
+8. BMI
+9. LBM（kg）
+
+NEAT / TEF は独立カードにせず、収支内訳または設定のみ。
+
+**カードタップ → CardHistory:** 日 / 週 / 月 / 年の推移グラフまたは表（FR-045）。詳細 API は詳細設計（OPN-010）。
+
+### 10.3 設定・Myセット（FR-049〜051）
+
+| 画面 | 内容 |
+|------|------|
+| 設定 | 身長・生年月日・性別・NEAT kcal・TEF 率（%） |
+| 食事 | Myセット（旧プリセット）・手入力・バーコード。PFC は**当日合計 g のみ** |
+| 運動 | Myセット・手入力（トレッドミル / 筋トレ） |
+
+初回セットアップは設定タブへ統合（FR-004）。目標 kcal/PFC 入力ステップは削除。
+
+### 10.4 廃止・整理（FR-024〜026, FR-033, FR-002/003/005）
+
+| 対象 | v3 方針 |
+|------|---------|
+| Walks モジュール / walk_sessions | API・UI 削除。Health 歩数同期は継続 |
+| Summary 週タブ | UI 削除。CardHistory が週次も提供 |
+| 目標 kcal / PFC 残量 | Dashboard から削除 |
+| user_profile.target_* / activity_factor | 新規利用停止。NEAT/TEF 列を追加 |
+
+### 10.5 リネーム（FR-040, OPN-008 解消）
+
+| 項目 | 方針 |
+|------|------|
+| 表示名 | **健康管理**（HTML title, manifest, ヘッダ） |
+| slug / リポジトリ | `kenko-kanri`（フォルダ・git remote・compose project 名） |
+| systemd | `kenko-kanri.service`（旧 `sanpo-ban` から置換） |
+| MySQL DB 名 | **`sanpo_ban` を維持**（データ移行不要。接続 URL のみ env で統一） |
+| Tailscale serve | パス・ポートは不変。サービス再起動手順を infra に追記 |
+| PWA | アイコン背景**白**、名称「健康管理」（FR-052） |
+
+**移行手順（概要）:** ① Pi で git pull（リネーム後リモート）② compose / systemd 名更新 ③ 旧 walk API 404 確認 ④ ブックマーク/PWA 再追加案内（README）。
+
+### 10.6 Health Sync 拡張（継続 + v3 表示）
+
+- **Body 概念（既存）:** `date`, `steps`, `weight_kg`, `bmi`, `lbm_kg`, `body_fat_pct`（後 3 つ任意）
+- TOP カードは Body モジュールの「当日 → 最新」解決ロジックを共有
+
+### 10.7 非機能（v3 追記）
+
+| NFR ID | 対応方針 |
+|--------|----------|
+| NFR-011 | TOP は縦スクロールで 9 カードすべて到達可能 |
+| NFR-012 | UI 文言・manifest から「散歩判」を排除 |
+
+### 10.8 v3 要件トレーサビリティ
+
+| 要件 ID | 設計要素 |
+|---------|----------|
+| FR-040 | リネーム方針 §10.5、Frontend Shell |
+| FR-041〜047 | Balance モジュール、TOP 収支カード、計算 §10.1 |
+| FR-044, FR-045 | Dashboard + CardHistory |
+| FR-048 | 4 タブ Frontend Shell |
+| FR-049, FR-043 | Settings モジュール、UserProfile.neat_kcal / tef_rate |
+| FR-050, FR-051 | Meals UI（Myセット名称、PFC 合計のみ） |
+| FR-052, FR-053 | PWA manifest、notion ライト継続 |
+| AC-019〜025 | §10.1〜10.5 の受入根拠 |
+
+### 10.9 v3 未決事項
+
+| ID | 内容 | 詳細設計で解決 |
+|----|------|---------------|
+| OPN-008 | リネーム手順 | **解消**（§10.5。DB 名維持） |
+| OPN-009 | walk_sessions 削除タイミング | はい（v3 実装一括） |
+| OPN-010 | CardHistory API 粒度 | はい |
+| DD-007 | Balance API レスポンス・null 扱い | はい |
+| DD-008 | profile マイグレーション（NEAT/TEF、target 列） | はい |
+| DD-009 | TOP スライド UI・履歴画面 | はい |

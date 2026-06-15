@@ -42,3 +42,4 @@
 |------|----------|
 | 2026-06-13 | 初版作成 |
 | 2026-06-13 | v2: Open Food Facts・httpx・Barcode Detector を追記 |
+| 2026-06-14 | v3: PWA 白背景アイコン、CardHistory 向け chart ライブラリは詳細設計で選定 |
