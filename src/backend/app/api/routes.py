@@ -256,6 +256,8 @@ def delete_weight(weight_id: int, db: Session = Depends(get_db)) -> Response:
 
 @router.post("/sync/health")
 def sync_health(body: HealthSyncRequest, db: Session = Depends(get_db)) -> dict:
+    from datetime import time as time_cls, timedelta
+
     now = now_jst()
     steps_logged = False
     if body.steps is not None:
@@ -272,6 +274,22 @@ def sync_health(body: HealthSyncRequest, db: Session = Depends(get_db)) -> dict:
     weight_logged = False
     body_composition_logged = False
     if body.weight_kg is not None:
+        day_start = datetime.combine(body.date, time_cls.min, tzinfo=now.tzinfo)
+        day_end = day_start + timedelta(days=1)
+        for row in db.scalars(
+            select(WeightLog).where(
+                WeightLog.logged_at >= day_start,
+                WeightLog.logged_at < day_end,
+                WeightLog.source == "shortcuts",
+            )
+        ).all():
+            db.delete(row)
+
+        log_at = (
+            now
+            if body.date == today_jst()
+            else datetime.combine(body.date, time_cls(12, 0), tzinfo=now.tzinfo)
+        )
         db.add(
             create_weight_log(
                 weight_kg=body.weight_kg,
@@ -279,7 +297,7 @@ def sync_health(body: HealthSyncRequest, db: Session = Depends(get_db)) -> dict:
                 lbm_kg=body.lbm_kg,
                 body_fat_pct=body.body_fat_pct,
                 source="shortcuts",
-                logged_at=now,
+                logged_at=log_at,
             )
         )
         weight_logged = True

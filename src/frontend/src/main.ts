@@ -1,6 +1,7 @@
 import "./styles/notion.css";
 import { api } from "./api/client";
 import { openBarcodeFlow } from "./barcode-flow";
+import { formatHistoryListValue, mountHistoryChart } from "./history-chart";
 import type {
   DashboardTop,
   HistoryMetric,
@@ -16,17 +17,86 @@ let currentTab: Tab = "top";
 let historyView: { metric: HistoryMetric; label: string } | null = null;
 let historyPeriod: HistoryPeriod = "day";
 
-const CARD_ORDER: { metric: HistoryMetric; label: string; large?: boolean }[] = [
-  { metric: "balance", label: "収支", large: true },
-  { metric: "weight", label: "体重" },
-  { metric: "intake", label: "摂取" },
-  { metric: "bmr", label: "基礎代謝" },
-  { metric: "exercise", label: "消費" },
-  { metric: "steps", label: "歩数" },
-  { metric: "body_fat_pct", label: "体脂肪率" },
-  { metric: "bmi", label: "BMI" },
-  { metric: "lbm", label: "LBM" },
+const CARD_ORDER: {
+  metric: HistoryMetric;
+  label: string;
+  large?: boolean;
+  tone: string;
+  icon: string;
+}[] = [
+  {
+    metric: "balance",
+    label: "収支",
+    large: true,
+    tone: "violet",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18V6m0 12h16M8 6v12M12 10v8M16 8v10"/></svg>`,
+  },
+  {
+    metric: "weight",
+    label: "体重",
+    tone: "orange",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="13" r="7"/><path d="M12 10v3M9 6h6"/></svg>`,
+  },
+  {
+    metric: "intake",
+    label: "摂取",
+    tone: "green",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3v8a6 6 0 0012 0V3M6 14h12"/></svg>`,
+  },
+  {
+    metric: "bmr",
+    label: "基礎代謝",
+    tone: "blue",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3c2 4 5 6 5 10a5 5 0 01-10 0c0-4 3-6 5-10z"/></svg>`,
+  },
+  {
+    metric: "exercise",
+    label: "消費",
+    tone: "coral",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="14" cy="6" r="2"/><path d="M4 20l6-8 4 4 6-10"/></svg>`,
+  },
+  {
+    metric: "steps",
+    label: "歩数",
+    tone: "teal",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 4l2 2-6 8-3-3-5 7"/><circle cx="17" cy="5" r="1.5" fill="currentColor"/></svg>`,
+  },
+  {
+    metric: "body_fat_pct",
+    label: "体脂肪率",
+    tone: "amber",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>`,
+  },
+  {
+    metric: "bmi",
+    label: "BMI",
+    tone: "rose",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="14" width="4" height="6" rx="1"/><rect x="10" y="10" width="4" height="10" rx="1"/><rect x="16" y="6" width="4" height="14" rx="1"/></svg>`,
+  },
+  {
+    metric: "lbm",
+    label: "除脂肪体重",
+    tone: "sky",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="2"/><path d="M8 21v-4a4 4 0 018 0v4M6 11h12"/></svg>`,
+  },
 ];
+
+const METRIC_ACCENT: Record<string, string> = {
+  violet: "#7c5cff",
+  orange: "#f59e0b",
+  green: "#10b981",
+  blue: "#3b82f6",
+  coral: "#f97316",
+  teal: "#14b8a6",
+  amber: "#eab308",
+  rose: "#f43f5e",
+  sky: "#0ea5e9",
+};
+
+function metricAccent(metric: HistoryMetric): string {
+  const card = CARD_ORDER.find((c) => c.metric === metric);
+  return METRIC_ACCENT[card?.tone ?? "violet"] ?? METRIC_ACCENT.violet;
+}
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -37,13 +107,23 @@ function formatTime(iso: string): string {
 }
 
 function formatValue(metric: HistoryMetric, value: number | null | undefined): string {
-  if (value == null) return "--";
-  if (metric === "balance") return `${Math.round(value)} kcal`;
-  if (metric === "weight" || metric === "lbm") return `${value.toFixed(1)} kg`;
-  if (metric === "body_fat_pct") return `${value.toFixed(1)} %`;
-  if (metric === "bmi") return value.toFixed(1);
-  if (metric === "steps") return `${Math.round(value).toLocaleString()} 歩`;
-  return `${Math.round(value)} kcal`;
+  const parts = formatMetricParts(metric, value);
+  if (parts.unit) return `${parts.number} ${parts.unit}`;
+  return parts.number;
+}
+
+function formatMetricParts(
+  metric: HistoryMetric,
+  value: number | null | undefined
+): { number: string; unit: string } {
+  if (value == null) return { number: "--", unit: "" };
+  if (metric === "balance") return { number: `${Math.round(value)}`, unit: "kcal" };
+  if (metric === "weight" || metric === "lbm")
+    return { number: value.toFixed(1), unit: "kg" };
+  if (metric === "body_fat_pct") return { number: value.toFixed(1), unit: "%" };
+  if (metric === "bmi") return { number: value.toFixed(1), unit: "" };
+  if (metric === "steps") return { number: Math.round(value).toLocaleString(), unit: "歩" };
+  return { number: `${Math.round(value)}`, unit: "kcal" };
 }
 
 function cardValue(d: DashboardTop, metric: HistoryMetric): number | null {
@@ -102,10 +182,11 @@ function renderTabs(): string {
     { id: "exercise", label: "運動" },
     { id: "settings", label: "設定" },
   ];
+  const activeTab = historyView ? "top" : currentTab;
   return `<nav class="tab-bar">${tabs
     .map(
       (t) =>
-        `<button class="tab ${currentTab === t.id ? "active" : ""}" data-tab="${t.id}">${t.label}</button>`
+        `<button class="tab ${activeTab === t.id ? "active" : ""}" data-tab="${t.id}">${t.label}</button>`
     )
     .join("")}</nav>`;
 }
@@ -128,22 +209,33 @@ function renderTopCards(d: DashboardTop): string {
 
   const cardsHtml = CARD_ORDER.map((card) => {
     const val = cardValue(d, card.metric);
+    const parts = formatMetricParts(card.metric, val);
     const deficit =
       card.metric === "balance" && val != null && val < 0 ? " balance-deficit" : "";
-    const size = card.large ? " card-hero" : "";
+    const hero = card.large ? " metric-card--hero" : "";
+    const extra = card.metric === "bmr" ? balanceHint : "";
     return `
-      <button type="button" class="metric-card${size}${deficit}" data-metric="${card.metric}" data-label="${card.label}">
-        <div class="stat-label">${card.label}</div>
-        <div class="stat-lg">${formatValue(card.metric, val)}</div>
-        ${card.metric === "bmr" ? balanceHint : ""}
+      <button type="button" class="metric-card metric-card--${card.tone}${hero}${deficit}" data-metric="${card.metric}" data-label="${card.label}">
+        <div class="metric-card__body">
+          <div class="metric-card__value">
+            <span class="metric-card__number">${parts.number}</span>
+            ${parts.unit ? `<span class="metric-card__unit">${parts.unit}</span>` : ""}
+          </div>
+          <div class="metric-card__label">${card.label}</div>
+          ${extra}
+        </div>
+        <div class="metric-card__icon" aria-hidden="true">${card.icon}</div>
       </button>`;
   }).join("");
 
   return `
     <div class="page">
-      <h1 class="page-title">健康管理</h1>
-      <div class="card-scroll">${cardsHtml}</div>
-      <p class="muted">カードをタップで推移を表示（マイナス収支＝痩せ方向）</p>
+      <header class="page-header">
+        <h1 class="page-title">健康管理</h1>
+        <p class="page-subtitle">今日 · ${d.date}</p>
+      </header>
+      <div class="metric-grid">${cardsHtml}</div>
+      <p class="muted page-footnote">タップで推移 · マイナス収支＝痩せ方向</p>
     </div>
     ${renderTabs()}`;
 }
@@ -175,11 +267,14 @@ async function renderHistory(): Promise<void> {
     month: "月",
     year: "年",
   };
+  const accent = metricAccent(historyView.metric);
 
   app.innerHTML = `
     <div class="page">
-      <button type="button" class="btn btn-block modal-secondary" id="history-back">← TOP</button>
-      <h1 class="page-title">${historyView.label}</h1>
+      <header class="page-header">
+        <h1 class="page-title">${historyView.label}</h1>
+        <p class="page-subtitle">推移 · ${periodLabels[historyPeriod]}</p>
+      </header>
       <div class="segmented">
         ${periods
           .map(
@@ -188,24 +283,31 @@ async function renderHistory(): Promise<void> {
           )
           .join("")}
       </div>
-      <div class="card">
+      <div class="card history-chart-card">
+        <div id="history-chart" class="history-chart"></div>
+      </div>
+      <div class="card history-summary">
         ${hist.points
           .slice()
           .reverse()
+          .filter((pt) => pt.value != null)
+          .slice(0, 5)
           .map(
             (pt) =>
-              `<div class="list-row"><div class="list-row-main"><strong>${pt.label}</strong></div><div>${formatValue(historyView!.metric, pt.value)}</div></div>`
+              `<div class="list-row"><div class="list-row-main"><strong>${pt.label}</strong></div><div class="history-value">${formatHistoryListValue(historyView!.metric, pt.value)}</div></div>`
           )
-          .join("")}
+          .join("") || `<p class="muted">記録がありません</p>`}
       </div>
     </div>
+    ${renderTabs()}
   `;
 
-  document.getElementById("history-back")!.addEventListener("click", () => {
-    historyView = null;
-    currentTab = "top";
-    render();
-  });
+  bindTabs();
+  const chartEl = document.getElementById("history-chart");
+  if (chartEl) {
+    mountHistoryChart(chartEl, hist.points, historyPeriod, accent);
+  }
+
   document.querySelectorAll(".segment").forEach((el) => {
     el.addEventListener("click", () => {
       historyPeriod = (el as HTMLElement).dataset.period as HistoryPeriod;
@@ -228,13 +330,16 @@ async function renderMeals(): Promise<void> {
 
   app.innerHTML = `
     <div class="page">
-      <h1 class="page-title">食事</h1>
+      <header class="page-header">
+        <h1 class="page-title">食事</h1>
+        <p class="page-subtitle">${date}</p>
+      </header>
       <div class="card mint">
-        <div class="stat-label">今日の P / F / C 合計 (g)</div>
-        <div class="stat-lg">${totals.protein_g.toFixed(1)} / ${totals.fat_g.toFixed(1)} / ${totals.carbs_g.toFixed(1)}</div>
+        <div class="stat-label">P / F / C 合計</div>
+        <div class="stat-lg">${totals.protein_g.toFixed(1)} <span class="muted" style="font-size:1rem">/ ${totals.fat_g.toFixed(1)} / ${totals.carbs_g.toFixed(1)} g</span></div>
       </div>
-      <button class="btn btn-primary btn-block" id="barcode-btn">バーコード</button>
-      <p class="muted">Myセット（${date}）</p>
+      <button class="btn btn-primary btn-block" id="barcode-btn" style="margin-bottom:20px">バーコードで記録</button>
+      <p class="section-title">Myセット</p>
       <div class="preset-grid">
         ${
           presets.length
@@ -248,7 +353,7 @@ async function renderMeals(): Promise<void> {
         }
       </div>
       <div class="card" style="margin-top:16px">
-        <div class="stat-label">今日の記録</div>
+        <div class="section-title">今日の記録</div>
         ${
           meals.length
             ? meals
@@ -293,15 +398,18 @@ async function renderExercise(): Promise<void> {
 
   app.innerHTML = `
     <div class="page">
-      <h1 class="page-title">運動</h1>
+      <header class="page-header">
+        <h1 class="page-title">運動</h1>
+        <p class="page-subtitle">${date}</p>
+      </header>
       <div class="card">
-        <h2 style="margin:0 0 8px;font-size:1rem">トレッドミル</h2>
+        <h2 class="section-title">トレッドミル</h2>
         <div class="field"><label>分数</label><input id="tm-min" type="number" value="30" /></div>
         <div class="field"><label>マシン kcal（任意）</label><input id="tm-kcal" type="number" /></div>
         <button class="btn btn-primary btn-block" id="tm-btn">記録</button>
       </div>
       <div class="card">
-        <h2 style="margin:0 0 8px;font-size:1rem">筋トレ</h2>
+        <h2 class="section-title">筋トレ</h2>
         <div class="field"><label>種目</label>
           <select id="st-code">${templates.map((t) => `<option value="${t.code}">${t.name}</option>`).join("")}</select>
         </div>
@@ -309,7 +417,7 @@ async function renderExercise(): Promise<void> {
         <button class="btn btn-primary btn-block" id="st-btn">記録</button>
       </div>
       <div class="card">
-        <div class="stat-label">今日のトレッドミル</div>
+        <div class="section-title">今日のトレッドミル</div>
         ${
           treadmill.length
             ? treadmill
@@ -328,7 +436,7 @@ async function renderExercise(): Promise<void> {
         }
       </div>
       <div class="card">
-        <div class="stat-label">今日の筋トレ</div>
+        <div class="section-title">今日の筋トレ</div>
         ${
           strength.length
             ? strength
@@ -370,8 +478,11 @@ async function renderSettings(existing: Profile | null, isSetup = false): Promis
   const p = existing ?? (await api.getProfile().catch(() => null));
   app.innerHTML = `
     <div class="page">
-      <h1 class="page-title">${isSetup ? "初回設定" : "設定"}</h1>
-      <form id="settings-form">
+      <header class="page-header">
+        <h1 class="page-title">${isSetup ? "初回設定" : "設定"}</h1>
+        ${isSetup ? `<p class="page-subtitle">プロフィールを入力してください</p>` : ""}
+      </header>
+      <form id="settings-form" class="card">
         <div class="field"><label>身長 (cm)</label><input name="height_cm" type="number" value="${p?.height_cm ?? 175}" required /></div>
         <div class="field"><label>生年月日</label><input name="birth_date" type="date" value="${p?.birth_date ?? "1990-01-15"}" required /></div>
         <div class="field"><label>性別</label>

@@ -88,8 +88,8 @@ def test_health_sync_body_composition(client):
     assert r.status_code == 200
     assert r.json()["body_composition_logged"] is True
 
-    weight = client.get("/api/v1/weights").json()[0]
-    assert weight["bmi"] == 23.5
+    weights = client.get("/api/v1/weights").json()
+    weight = next(w for w in weights if w.get("bmi") == 23.5)
     assert weight["lbm_kg"] == 58.2
     assert weight["body_fat_pct"] == 19.2
 
@@ -187,6 +187,37 @@ def test_dashboard_history(client):
     assert data["metric"] == "steps"
     assert data["period"] == "day"
     assert len(data["points"]) == 14
+
+
+def test_weight_history_no_carry_forward(client):
+    _setup_profile(client)
+    client.post("/api/v1/sync/health", json={"date": "2026-06-13", "weight_kg": 72.0})
+    client.post("/api/v1/sync/health", json={"date": "2026-06-15", "weight_kg": 74.5})
+
+    r = client.get(
+        "/api/v1/dashboard/history/weight",
+        params={"period": "day", "anchor_date": "2026-06-15"},
+    )
+    assert r.status_code == 200
+    by_label = {p["label"]: p["value"] for p in r.json()["points"]}
+    assert by_label["2026-06-13"] == 72.0
+    assert by_label["2026-06-14"] is None
+    assert by_label["2026-06-15"] == 74.5
+
+
+def test_weight_history_week_average(client):
+    _setup_profile(client)
+    client.post("/api/v1/sync/health", json={"date": "2026-06-09", "weight_kg": 70.0})
+    client.post("/api/v1/sync/health", json={"date": "2026-06-11", "weight_kg": 74.0})
+
+    r = client.get(
+        "/api/v1/dashboard/history/weight",
+        params={"period": "week", "anchor_date": "2026-06-15"},
+    )
+    assert r.status_code == 200
+    points = r.json()["points"]
+    anchor_week = points[-1]
+    assert anchor_week["value"] == pytest.approx(72.0)
 
 
 def test_neat_tef_affects_balance(client):

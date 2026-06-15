@@ -2,7 +2,7 @@
   "name": "健康管理",
   "short_name": "健康管理",
   "display": "standalone",
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
+  "theme_color": "#eef0f4",
+  "background_color": "#eef0f4",
   "start_url": "/"
 }

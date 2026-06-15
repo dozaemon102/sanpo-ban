@@ -181,6 +181,75 @@ def steps_for_date(db: Session, on_date: date) -> int:
     return steps_row.steps if steps_row else 0
 
 
+def _weight_log_on_date(db: Session, on_date: date) -> WeightLog | None:
+    day_start = datetime.combine(on_date, time.min, tzinfo=JST)
+    day_end = day_start + timedelta(days=1)
+    return db.scalar(
+        select(WeightLog)
+        .where(WeightLog.logged_at >= day_start, WeightLog.logged_at < day_end)
+        .order_by(WeightLog.logged_at.desc())
+        .limit(1)
+    )
+
+
+def _steps_logged_on_date(db: Session, on_date: date) -> int | None:
+    steps_row = db.scalar(select(DailySteps).where(DailySteps.step_date == on_date))
+    return steps_row.steps if steps_row else None
+
+
+def history_day_metric(
+    db: Session, profile: UserProfile, metric: HistoryMetric, on_date: date
+) -> float | None:
+    """履歴用: その日に記録がなければ None（TOP カードの最新値フォールバックは使わない）。"""
+    if metric == "weight":
+        row = _weight_log_on_date(db, on_date)
+        return float(row.weight_kg) if row else None
+
+    if metric == "bmi":
+        row = _weight_log_on_date(db, on_date)
+        return float(row.bmi) if row and row.bmi is not None else None
+
+    if metric == "lbm":
+        row = _weight_log_on_date(db, on_date)
+        return float(row.lbm_kg) if row and row.lbm_kg is not None else None
+
+    if metric == "body_fat_pct":
+        row = _weight_log_on_date(db, on_date)
+        return float(row.body_fat_pct) if row and row.body_fat_pct is not None else None
+
+    if metric == "steps":
+        return _steps_logged_on_date(db, on_date)
+
+    if metric == "intake":
+        return float(sum_meals(db, on_date).kcal)
+
+    if metric == "exercise":
+        row = _weight_log_on_date(db, on_date)
+        weight = float(row.weight_kg) if row else float(profile.initial_weight_kg)
+        return float(burn_for_date(db, on_date, weight).total_kcal)
+
+    if metric == "bmr":
+        row = _weight_log_on_date(db, on_date)
+        if row and row.lbm_kg is not None:
+            return float(katch_mcardle_bmr(float(row.lbm_kg)))
+        return None
+
+    if metric == "balance":
+        row = _weight_log_on_date(db, on_date)
+        lbm_kg = float(row.lbm_kg) if row and row.lbm_kg is not None else None
+        if lbm_kg is None:
+            return None
+        intake = sum_meals(db, on_date)
+        bmr_kcal = katch_mcardle_bmr(lbm_kg)
+        weight = float(row.weight_kg) if row else float(profile.initial_weight_kg)
+        burn = burn_for_date(db, on_date, weight)
+        neat = profile.neat_kcal
+        tef = tef_kcal(intake.kcal, float(profile.tef_rate))
+        return float(intake.kcal - bmr_kcal - neat - burn.total_kcal - tef)
+
+    return None
+
+
 def daily_snapshot(db: Session, on_date: date, profile: UserProfile) -> dict:
     intake = sum_meals(db, on_date)
     weight_kg = latest_weight_kg(db, on_date, profile)
@@ -320,53 +389,14 @@ def _metric_value_for_range(
     period: HistoryPeriod,
 ) -> float | None:
     if period == "day" or start == end:
-        snap = daily_snapshot(db, start, profile)
-        key_map = {
-            "balance": "balance",
-            "weight": "weight_kg",
-            "intake": "intake_kcal",
-            "bmr": "bmr_kcal",
-            "exercise": "exercise_kcal",
-            "steps": "steps",
-            "body_fat_pct": "body_fat_pct",
-            "bmi": "bmi",
-            "lbm": "lbm_kg",
-        }
-        val = snap[key_map[metric]]
-        return float(val) if val is not None else None
-
-    if metric in ("weight", "bmi", "lbm", "body_fat_pct"):
-        field = "lbm_kg" if metric == "lbm" else metric
-        col = getattr(WeightLog, field)
-        row = db.scalar(
-            select(WeightLog)
-            .where(
-                WeightLog.logged_at >= datetime.combine(start, time.min, tzinfo=JST),
-                WeightLog.logged_at < datetime.combine(end + timedelta(days=1), time.min, tzinfo=JST),
-                col.isnot(None),
-            )
-            .order_by(WeightLog.logged_at.desc())
-            .limit(1)
-        )
-        if row:
-            val = getattr(row, field)
-            return float(val) if val is not None else None
-        return None
+        return history_day_metric(db, profile, metric, start)
 
     values: list[float] = []
     d = start
     while d <= end:
-        snap = daily_snapshot(db, d, profile)
-        key_map = {
-            "balance": "balance",
-            "intake": "intake_kcal",
-            "bmr": "bmr_kcal",
-            "exercise": "exercise_kcal",
-            "steps": "steps",
-        }
-        val = snap[key_map[metric]]
+        val = history_day_metric(db, profile, metric, d)
         if val is not None:
-            values.append(float(val))
+            values.append(val)
         d += timedelta(days=1)
 
     if not values:
