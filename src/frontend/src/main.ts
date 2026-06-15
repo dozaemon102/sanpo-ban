@@ -6,12 +6,12 @@ import type {
   DashboardTop,
   HistoryMetric,
   HistoryPeriod,
+  MealSlot,
   Profile,
   ProfileUpdate,
 } from "./types";
 
 type Tab = "top" | "meals" | "exercise" | "settings";
-type MealSlot = "breakfast" | "lunch" | "dinner" | "snack";
 
 const app = document.getElementById("app")!;
 let currentTab: Tab = "top";
@@ -125,14 +125,6 @@ function metricAccent(metric: HistoryMetric): string {
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-function mealSlotFromTime(iso: string): MealSlot {
-  const hour = new Date(iso).getHours();
-  if (hour >= 5 && hour < 11) return "breakfast";
-  if (hour >= 11 && hour < 15) return "lunch";
-  if (hour >= 15 && hour < 22) return "dinner";
-  return "snack";
 }
 
 function formatMonthJa(iso: string): string {
@@ -406,7 +398,10 @@ async function renderMeals(): Promise<void> {
     MealSlot,
     typeof meals
   >;
-  meals.forEach((m) => mealsBySlot[mealSlotFromTime(m.logged_at)].push(m));
+  meals.forEach((m) => {
+    const slot = m.meal_slot ?? "snack";
+    mealsBySlot[slot].push(m);
+  });
 
   const slotSections = MEAL_SLOTS.map((slot) => {
     const slotMeals = mealsBySlot[slot.id];
@@ -418,7 +413,7 @@ async function renderMeals(): Promise<void> {
           <div class="record-item">
             <div class="record-item__main">
               <strong>${m.name}</strong>
-              <span class="muted">${formatTime(m.logged_at)} · ${m.kcal} kcal · P${m.protein_g.toFixed(1)} F${m.fat_g.toFixed(1)} C${m.carbs_g.toFixed(1)}</span>
+              <span class="muted">${m.kcal} kcal · P${m.protein_g.toFixed(1)} F${m.fat_g.toFixed(1)} C${m.carbs_g.toFixed(1)}</span>
             </div>
             <button type="button" class="btn-delete" data-delete-id="${m.id}" data-delete-kind="meal">削除</button>
           </div>`
@@ -437,7 +432,7 @@ async function renderMeals(): Promise<void> {
         </div>
         <div class="record-section__body">${itemsHtml}</div>
         <div class="record-section__actions">
-          <button type="button" class="record-action-btn record-action-btn--primary" data-entry-btn>
+          <button type="button" class="record-action-btn record-action-btn--primary" data-entry-btn data-meal-slot="${slot.id}">
             入力
           </button>
         </div>
@@ -468,7 +463,10 @@ async function renderMeals(): Promise<void> {
   bindTabs();
   bindDateStrip("meals", renderMeals);
   document.querySelectorAll("[data-entry-btn]").forEach((el) => {
-    el.addEventListener("click", () => openMealEntryFlow(date, renderMeals));
+    el.addEventListener("click", () => {
+      const slot = (el as HTMLElement).dataset.mealSlot as MealSlot;
+      openMealEntryFlow(date, slot, renderMeals);
+    });
   });
   bindDeleteButtons('[data-delete-kind="meal"]', api.deleteMeal, renderMeals);
 }
@@ -603,14 +601,14 @@ async function renderExercise(): Promise<void> {
     e.preventDefault();
     const minutes = Number((document.getElementById("tm-min") as HTMLInputElement).value);
     const kcalRaw = (document.getElementById("tm-kcal") as HTMLInputElement).value;
-    await api.addTreadmill(minutes, kcalRaw ? Number(kcalRaw) : undefined);
+    await api.addTreadmill(minutes, date, kcalRaw ? Number(kcalRaw) : undefined);
     await renderExercise();
   });
   document.getElementById("st-form")!.addEventListener("submit", async (e) => {
     e.preventDefault();
     const code = (document.getElementById("st-code") as HTMLSelectElement).value;
     const minutes = Number((document.getElementById("st-min") as HTMLInputElement).value);
-    await api.addStrength(code, minutes);
+    await api.addStrength(code, minutes, date);
     await renderExercise();
   });
   bindDeleteButtons('[data-delete-kind="treadmill"]', api.deleteTreadmill, renderExercise);
@@ -640,8 +638,6 @@ async function renderSettings(existing: Profile | null, isSetup = false): Promis
           <input name="neat_kcal" type="number" value="${p?.neat_kcal ?? 180}" required />
           <p class="field-hint muted">家の中だけの活動（料理・掃除など）。目安 150〜220 kcal。歩数は屋外分として別計上。</p>
         </div>
-        <div class="field"><label>歩幅 (cm) <span class="muted">任意</span></label><input name="stride_cm" type="number" step="0.1" min="30" max="120" value="${p?.stride_cm ?? ""}" placeholder="例: 70" /></div>
-        <div class="field"><label>歩行速度 (km/h) <span class="muted">任意</span></label><input name="walking_speed_kmh" type="number" step="0.1" min="1" max="10" value="${p?.walking_speed_kmh ?? ""}" placeholder="例: 4.0" /></div>
         <div class="field"><label>TEF 率 (%)</label><input name="tef_pct" type="number" step="1" value="${((p?.tef_rate ?? 0.1) * 100).toFixed(0)}" required /></div>
         <button class="btn btn-primary btn-block" type="submit">${isSetup ? "はじめる" : "保存"}</button>
         <p id="settings-error" class="error"></p>
@@ -653,8 +649,6 @@ async function renderSettings(existing: Profile | null, isSetup = false): Promis
   document.getElementById("settings-form")!.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target as HTMLFormElement);
-    const strideRaw = String(fd.get("stride_cm") ?? "").trim();
-    const speedRaw = String(fd.get("walking_speed_kmh") ?? "").trim();
     const body: ProfileUpdate = {
       height_cm: Number(fd.get("height_cm")),
       birth_date: String(fd.get("birth_date")),
@@ -664,8 +658,6 @@ async function renderSettings(existing: Profile | null, isSetup = false): Promis
       tef_rate: Number(fd.get("tef_pct")) / 100,
       setup_completed: true,
     };
-    if (strideRaw) body.stride_cm = Number(strideRaw);
-    if (speedRaw) body.walking_speed_kmh = Number(speedRaw);
     try {
       await api.putProfile(body);
       if (isSetup) {

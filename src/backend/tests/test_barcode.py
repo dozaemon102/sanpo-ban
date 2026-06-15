@@ -79,6 +79,7 @@ def test_barcode_lookup_api(client):
         "/api/v1/meals",
         json={
             "log_date": "2026-06-13",
+            "meal_slot": "snack",
             "name": "テスト",
             "kcal": 100,
             "protein_g": 5,

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import not_found, validation_error
-from app.core.timezone import now_jst, today_jst
+from app.core.timezone import logged_at_for_log_date, now_jst, today_jst
 from app.database import get_db
 from app.models.entities import (
     DailySteps,
@@ -191,7 +191,7 @@ def list_meals(date: str, db: Session = Depends(get_db)) -> list[MealLog]:
 
 @router.post("/meals", response_model=MealLogResponse, status_code=201)
 def create_meal(body: MealLogCreate, db: Session = Depends(get_db)) -> MealLog:
-    meal = MealLog(**body.model_dump(), logged_at=now_jst())
+    meal = MealLog(**body.model_dump(), logged_at=logged_at_for_log_date(body.log_date))
     db.add(meal)
     db.commit()
     db.refresh(meal)
@@ -215,13 +215,14 @@ def duplicate_meal(meal_id: int, body: MealDuplicate, db: Session = Depends(get_
         raise not_found("Meal not found")
     copy = MealLog(
         log_date=body.log_date,
+        meal_slot=meal.meal_slot,
         name=meal.name,
         kcal=meal.kcal,
         protein_g=meal.protein_g,
         fat_g=meal.fat_g,
         carbs_g=meal.carbs_g,
         food_preset_id=meal.food_preset_id,
-        logged_at=now_jst(),
+        logged_at=logged_at_for_log_date(body.log_date),
     )
     db.add(copy)
     db.commit()
@@ -374,8 +375,9 @@ def create_treadmill(body: TreadmillCreate, db: Session = Depends(get_db)) -> Tr
     profile = get_profile(db)
     weight = float(profile.initial_weight_kg)
     calc = treadmill_burn_kcal(body.minutes, weight, body.speed_kmh, body.machine_kcal)
+    log_date = body.log_date or today_jst()
     row = TreadmillLog(
-        logged_at=now_jst(),
+        logged_at=logged_at_for_log_date(log_date),
         minutes=body.minutes,
         speed_kmh=Decimal(str(body.speed_kmh)) if body.speed_kmh is not None else None,
         incline_pct=Decimal(str(body.incline_pct)) if body.incline_pct is not None else None,
@@ -425,8 +427,9 @@ def create_strength(body: StrengthCreate, db: Session = Depends(get_db)) -> Stre
         raise validation_error("Invalid exercise_code")
     profile = get_profile(db)
     calc = strength_burn_kcal(body.exercise_code, body.minutes, float(profile.initial_weight_kg))
+    log_date = body.log_date or today_jst()
     row = StrengthLog(
-        logged_at=now_jst(),
+        logged_at=logged_at_for_log_date(log_date),
         exercise_code=body.exercise_code,
         minutes=body.minutes,
         calculated_kcal=calc,

@@ -123,6 +123,7 @@ class FoodLookupResponse(BaseModel):
 
 class MealLogCreate(BaseModel):
     log_date: date
+    meal_slot: str
     name: str
     kcal: int = Field(ge=0)
     protein_g: float = Field(ge=0)
@@ -130,6 +131,14 @@ class MealLogCreate(BaseModel):
     carbs_g: float = Field(ge=0)
     food_preset_id: int | None = None
     barcode: str | None = Field(default=None, pattern=r"^[0-9]{8,14}$")
+
+    @field_validator("meal_slot")
+    @classmethod
+    def validate_meal_slot(cls, value: str) -> str:
+        allowed = {"breakfast", "lunch", "dinner", "snack"}
+        if value not in allowed:
+            raise ValueError("meal_slot must be breakfast, lunch, dinner, or snack")
+        return value
 
 
 class MealLogResponse(MealLogCreate):
@@ -201,6 +210,7 @@ class HealthSyncRequest(BaseModel):
 
 
 class TreadmillCreate(BaseModel):
+    log_date: date | None = None
     minutes: int = Field(ge=1, le=300)
     speed_kmh: float | None = None
     incline_pct: float | None = None
@@ -216,6 +226,7 @@ class TreadmillResponse(TreadmillCreate):
 
 
 class StrengthCreate(BaseModel):
+    log_date: date | None = None
     exercise_code: str
     minutes: int = Field(ge=1, le=300)
 

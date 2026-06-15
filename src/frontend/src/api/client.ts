@@ -8,6 +8,7 @@ import type {
   HistoryPeriod,
   MealCreate,
   MealLog,
+  MealSlot,
   Profile,
   ProfileUpdate,
   StrengthLog,
@@ -44,16 +45,19 @@ export const api = {
   getPresets: () => request<FoodPreset[]>("/food-presets"),
   createPreset: (body: FoodPresetCreate) =>
     request<FoodPreset>("/food-presets", { method: "POST", body: JSON.stringify(body) }),
+  deletePreset: (presetId: number) =>
+    request<void>(`/food-presets/${presetId}`, { method: "DELETE" }),
   lookupBarcode: (barcode: string) => request<FoodLookupResponse>(`/foods/barcode/${barcode}`),
   getMeals: (date: string) => request<MealLog[]>(`/meals?date=${date}`),
   deleteMeal: (mealId: number) => request<void>(`/meals/${mealId}`, { method: "DELETE" }),
   addMeal: (body: MealCreate) =>
     request<MealLog>("/meals", { method: "POST", body: JSON.stringify(body) }),
-  addMealFromPreset: (preset: FoodPreset, logDate: string) =>
+  addMealFromPreset: (preset: FoodPreset, logDate: string, mealSlot: MealSlot) =>
     request("/meals", {
       method: "POST",
       body: JSON.stringify({
         log_date: logDate,
+        meal_slot: mealSlot,
         name: preset.name,
         kcal: preset.kcal,
         protein_g: preset.protein_g,
@@ -68,19 +72,19 @@ export const api = {
     request<TreadmillLog[]>(`/exercises/treadmill${date ? `?date=${date}` : ""}`),
   deleteTreadmill: (logId: number) =>
     request<void>(`/exercises/treadmill/${logId}`, { method: "DELETE" }),
-  addTreadmill: (minutes: number, machine_kcal?: number) =>
+  addTreadmill: (minutes: number, logDate: string, machine_kcal?: number) =>
     request("/exercises/treadmill", {
       method: "POST",
-      body: JSON.stringify({ minutes, machine_kcal: machine_kcal ?? null }),
+      body: JSON.stringify({ log_date: logDate, minutes, machine_kcal: machine_kcal ?? null }),
     }),
   getStrengthLogs: (date?: string) =>
     request<StrengthLog[]>(`/exercises/strength${date ? `?date=${date}` : ""}`),
   deleteStrength: (logId: number) =>
     request<void>(`/exercises/strength/${logId}`, { method: "DELETE" }),
-  addStrength: (exercise_code: string, minutes: number) =>
+  addStrength: (exercise_code: string, minutes: number, logDate: string) =>
     request("/exercises/strength", {
       method: "POST",
-      body: JSON.stringify({ exercise_code, minutes }),
+      body: JSON.stringify({ log_date: logDate, exercise_code, minutes }),
     }),
   getStrengthTemplates: () =>
     request<Array<{ code: string; name: string; met: number }>>(

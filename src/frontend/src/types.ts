@@ -118,8 +118,11 @@ export interface FoodLookupResponse {
   serving_note: string | null;
 }
 
+export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack";
+
 export interface MealCreate {
   log_date: string;
+  meal_slot: MealSlot;
   name: string;
   kcal: number;
   protein_g: number;
@@ -132,6 +135,7 @@ export interface MealCreate {
 export interface MealLog {
   id: number;
   log_date: string;
+  meal_slot: MealSlot;
   name: string;
   kcal: number;
   protein_g: number;

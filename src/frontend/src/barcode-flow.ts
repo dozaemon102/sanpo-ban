@@ -1,7 +1,7 @@
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { api } from "./api/client";
-import type { FoodLookupResponse, FoodPresetCreate, MealCreate } from "./types";
+import type { FoodLookupResponse, FoodPresetCreate, MealCreate, MealSlot } from "./types";
 
 type EntryTarget = "meal" | "preset";
 
@@ -47,7 +47,8 @@ function renderConfirmForm(
   logDate: string,
   onDone: () => Promise<void>,
   onCancel: () => void,
-  target: EntryTarget = "meal"
+  target: EntryTarget = "meal",
+  mealSlot?: MealSlot
 ): void {
   const submitLabel = target === "preset" ? "Myセットに登録" : "食事に追加";
   const title = target === "preset" ? "Myセットを確認" : "食事を確認";
@@ -82,6 +83,7 @@ function renderConfirmForm(
       } else {
         const body: MealCreate = {
           log_date: logDate,
+          meal_slot: mealSlot!,
           name: String(fd.get("name")),
           kcal: Number(fd.get("kcal")),
           protein_g: Number(fd.get("protein_g")),
@@ -105,9 +107,10 @@ export function renderManualForm(
   logDate: string,
   onDone: () => Promise<void>,
   onCancel: () => void,
-  opts?: { barcode?: string; reason?: string; target?: EntryTarget }
+  opts?: { barcode?: string; reason?: string; target?: EntryTarget; mealSlot?: MealSlot }
 ): void {
   const target = opts?.target ?? "meal";
+  const mealSlot = opts?.mealSlot;
   const submitLabel = target === "preset" ? "Myセットに登録" : "食事に追加";
   const title = target === "preset" ? "Myセットを手入力" : "手入力で追加";
   container.innerHTML = `
@@ -149,6 +152,7 @@ export function renderManualForm(
         const barcodeRaw = String(fd.get("barcode") ?? "").trim();
         const body: MealCreate = {
           log_date: logDate,
+          meal_slot: mealSlot!,
           name: String(fd.get("name")),
           kcal: Number(fd.get("kcal")),
           protein_g: Number(fd.get("protein_g")),
@@ -237,7 +241,8 @@ async function startZxingScan(video: HTMLVideoElement, onCode: (code: string) =>
 export function openBarcodeFlow(
   logDate: string,
   onDone: () => Promise<void>,
-  target: EntryTarget = "meal"
+  target: EntryTarget = "meal",
+  mealSlot?: MealSlot
 ): void {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -271,7 +276,7 @@ export function openBarcodeFlow(
     body.innerHTML = `<p class="muted modal-loading">商品を検索中…</p>`;
     try {
       const lookup = await api.lookupBarcode(code);
-      renderConfirmForm(body, lookup, logDate, onDone, close, target);
+      renderConfirmForm(body, lookup, logDate, onDone, close, target, mealSlot);
     } catch (err) {
       const msg = String(err);
       const reason =
@@ -281,7 +286,7 @@ export function openBarcodeFlow(
             ? "Open Food Facts に接続できません。手入力してください。"
             : "検索に失敗しました。手入力してください。";
       showToast(reason);
-      renderManualForm(body, logDate, onDone, close, { barcode: code, reason, target });
+      renderManualForm(body, logDate, onDone, close, { barcode: code, reason, target, mealSlot });
     }
   };
 
@@ -312,7 +317,7 @@ export function openBarcodeFlow(
     document.getElementById("barcode-manual-only")!.addEventListener("click", () => {
       scanCleanup?.();
       scanCleanup = null;
-      renderManualForm(body, logDate, onDone, close, { target });
+      renderManualForm(body, logDate, onDone, close, { target, mealSlot });
     });
 
     const runSearch = async (): Promise<void> => {
@@ -371,7 +376,12 @@ export function openBarcodeFlow(
   void startScanUi();
 }
 
-export function openManualMealFlow(logDate: string, onDone: () => Promise<void>, target: EntryTarget = "meal"): void {
+export function openManualMealFlow(
+  logDate: string,
+  onDone: () => Promise<void>,
+  target: EntryTarget = "meal",
+  mealSlot?: MealSlot
+): void {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `<div class="modal-card"><div id="manual-modal-body"></div></div>`;
@@ -381,5 +391,5 @@ export function openManualMealFlow(logDate: string, onDone: () => Promise<void>,
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
   });
-  renderManualForm(body, logDate, onDone, close, { target });
+  renderManualForm(body, logDate, onDone, close, { target, mealSlot });
 }

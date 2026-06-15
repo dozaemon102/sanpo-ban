@@ -904,22 +904,33 @@ body {
 }
 
 .preset-list-item {
-  display: block;
-  width: 100%;
-  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 4px 4px 4px 0;
+}
+
+.preset-list-item__add {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
   cursor: pointer;
 }
 
-.preset-list-item strong {
+.preset-list-item__add strong {
   display: block;
   font-size: 0.9375rem;
 }
 
-.preset-list-item .muted {
+.preset-list-item__add .muted {
   display: block;
   margin-top: 4px;
   font-size: 0.75rem;

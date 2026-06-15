@@ -158,6 +158,7 @@ def test_meal_preset_flow(client):
         "/api/v1/meals",
         json={
             "log_date": "2026-06-13",
+            "meal_slot": "lunch",
             "name": preset["name"],
             "kcal": 188,
             "protein_g": 6,
@@ -176,6 +177,7 @@ def test_delete_meal_and_weight(client):
         "/api/v1/meals",
         json={
             "log_date": "2026-06-13",
+            "meal_slot": "dinner",
             "name": "test",
             "kcal": 100,
             "protein_g": 1,
@@ -321,3 +323,34 @@ def test_health_sync_walk_params_and_met_dashboard(client):
     assert cards["walking_speed_kmh"] == 4.2
     assert cards["walk_calc_method"] == "met"
     assert cards["walk_kcal"] > cards["steps"] * 72 * 0.0005
+
+
+def test_meal_slot_and_past_date_exercise(client):
+    _setup_profile(client)
+    r = client.post(
+        "/api/v1/meals",
+        json={
+            "log_date": "2026-06-10",
+            "meal_slot": "breakfast",
+            "name": "朝ごはん",
+            "kcal": 400,
+            "protein_g": 20,
+            "fat_g": 10,
+            "carbs_g": 50,
+            "food_preset_id": None,
+        },
+    )
+    assert r.status_code == 201
+    assert r.json()["meal_slot"] == "breakfast"
+
+    meals = client.get("/api/v1/meals", params={"date": "2026-06-10"}).json()
+    assert len(meals) == 1
+    assert meals[0]["meal_slot"] == "breakfast"
+
+    r = client.post(
+        "/api/v1/exercises/treadmill",
+        json={"log_date": "2026-06-10", "minutes": 30},
+    )
+    assert r.status_code == 201
+    logs = client.get("/api/v1/exercises/treadmill", params={"date": "2026-06-10"}).json()
+    assert len(logs) == 1
