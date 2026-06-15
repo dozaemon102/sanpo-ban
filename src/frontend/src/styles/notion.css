@@ -21,6 +21,7 @@
   --metric-amber: #eab308;
   --metric-rose: #f43f5e;
   --metric-sky: #0ea5e9;
+  --tab-bar-base: 64px;
   font-family: "SF Pro Display", Inter, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
 }
 
@@ -32,7 +33,7 @@ body {
   margin: 0;
   background: var(--surface);
   color: var(--charcoal);
-  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--tab-bar-base) + env(safe-area-inset-bottom, 0px));
   -webkit-font-smoothing: antialiased;
 }
 
@@ -44,6 +45,8 @@ body {
 
 .page {
   padding: 20px 16px 16px;
+  position: relative;
+  z-index: 0;
 }
 
 .page-header {
@@ -64,6 +67,8 @@ body {
 }
 
 .card {
+  position: relative;
+  z-index: 0;
   background: var(--canvas);
   border: none;
   border-radius: var(--card-radius);
@@ -130,21 +135,25 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
+  z-index: 50;
   display: flex;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.97);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--hairline);
   max-width: 480px;
   margin: 0 auto;
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.08);
+  isolation: isolate;
 }
 
 .tab {
   flex: 1;
-  padding: 10px 4px 12px;
+  min-height: var(--tab-bar-base);
+  padding: 12px 8px 14px;
   text-align: center;
-  font-size: 0.6875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--steel);
@@ -156,6 +165,7 @@ body {
 
 .tab.active {
   color: var(--primary);
+  font-weight: 700;
 }
 
 .tab.active::after {
@@ -164,9 +174,9 @@ body {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 24px;
-  height: 3px;
-  border-radius: 0 0 3px 3px;
+  width: 32px;
+  height: 4px;
+  border-radius: 0 0 4px 4px;
   background: var(--primary);
 }
 
@@ -332,7 +342,7 @@ body {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--tab-bar-base) + 20px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   z-index: 200;
   background: var(--charcoal);
@@ -355,6 +365,7 @@ body {
 
 .metric-card {
   position: relative;
+  z-index: 0;
   text-align: left;
   background: var(--canvas);
   border: none;
@@ -721,6 +732,8 @@ body {
 }
 
 .record-section {
+  position: relative;
+  z-index: 0;
   background: var(--canvas);
   border-radius: 14px;
   margin-bottom: 10px;
