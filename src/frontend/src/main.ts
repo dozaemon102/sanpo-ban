@@ -11,11 +11,36 @@ import type {
 } from "./types";
 
 type Tab = "top" | "meals" | "exercise" | "settings";
+type MealSlot = "breakfast" | "lunch" | "dinner" | "snack";
 
 const app = document.getElementById("app")!;
 let currentTab: Tab = "top";
 let historyView: { metric: HistoryMetric; label: string } | null = null;
 let historyPeriod: HistoryPeriod = "day";
+let selectedDate = new Date().toISOString().slice(0, 10);
+
+const MEAL_SLOTS: { id: MealSlot; label: string; icon: string }[] = [
+  {
+    id: "breakfast",
+    label: "朝食",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="4" fill="currentColor" opacity=".25"/><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" stroke-linecap="round"/></svg>`,
+  },
+  {
+    id: "lunch",
+    label: "昼食",
+    icon: `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="5" opacity=".85"/><path d="M12 3v2M12 19v2M5 12H3M21 12h-2" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>`,
+  },
+  {
+    id: "dinner",
+    label: "夕食",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 14a4 4 0 018 0" fill="currentColor" opacity=".2"/><path d="M12 3a7 7 0 00-7 7c0 3.5 2 6.5 5 7.8V20h4v-2.2c3-1.3 5-4.3 5-7.8a7 7 0 00-7-7z" stroke-linecap="round"/></svg>`,
+  },
+  {
+    id: "snack",
+    label: "間食",
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 10h12v8a2 2 0 01-2 2H8a2 2 0 01-2-2v-8z" fill="currentColor" opacity=".2"/><path d="M8 10V8a4 4 0 018 0v2M10 14h4" stroke-linecap="round"/></svg>`,
+  },
+];
 
 const CARD_ORDER: {
   metric: HistoryMetric;
@@ -100,6 +125,67 @@ function metricAccent(metric: HistoryMetric): string {
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function mealSlotFromTime(iso: string): MealSlot {
+  const hour = new Date(iso).getHours();
+  if (hour >= 5 && hour < 11) return "breakfast";
+  if (hour >= 11 && hour < 15) return "lunch";
+  if (hour >= 15 && hour < 22) return "dinner";
+  return "snack";
+}
+
+function formatMonthJa(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`);
+  return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+}
+
+function formatStripDay(iso: string): { primary: string; secondary: string; isToday: boolean } {
+  const d = new Date(`${iso}T12:00:00`);
+  const dow = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
+  const isToday = iso === todayIso();
+  return {
+    primary: isToday ? "今日" : String(d.getDate()),
+    secondary: dow,
+    isToday,
+  };
+}
+
+function buildDateStrip(anchor: string): string[] {
+  const base = new Date(`${anchor}T12:00:00`);
+  const dates: string[] = [];
+  for (let offset = -3; offset <= 3; offset += 1) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + offset);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
+function renderDateStrip(anchor: string, tab: "meals" | "exercise"): string {
+  return `
+    <div class="date-strip" role="tablist" aria-label="日付選択">
+      ${buildDateStrip(anchor)
+        .map((iso) => {
+          const { primary, secondary, isToday } = formatStripDay(iso);
+          const active = iso === anchor ? " active" : "";
+          const today = isToday ? " today" : "";
+          return `<button type="button" class="date-strip__item${active}${today}" data-date="${iso}" data-date-tab="${tab}">
+            <span class="date-strip__primary">${primary}</span>
+            <span class="date-strip__secondary">${secondary}</span>
+          </button>`;
+        })
+        .join("")}
+    </div>`;
+}
+
+function bindDateStrip(tab: "meals" | "exercise", rerender: () => Promise<void>): void {
+  document.querySelectorAll(`[data-date-tab="${tab}"]`).forEach((el) => {
+    el.addEventListener("click", async () => {
+      selectedDate = (el as HTMLElement).dataset.date ?? todayIso();
+      await rerender();
+    });
+  });
 }
 
 function formatTime(iso: string): string {
@@ -305,66 +391,98 @@ async function renderHistory(): Promise<void> {
 }
 
 async function renderMeals(): Promise<void> {
-  const date = todayIso();
+  const date = selectedDate;
   const [presets, meals] = await Promise.all([api.getPresets(), api.getMeals(date)]);
   const totals = meals.reduce(
     (acc, m) => ({
       protein_g: acc.protein_g + m.protein_g,
       fat_g: acc.fat_g + m.fat_g,
       carbs_g: acc.carbs_g + m.carbs_g,
+      kcal: acc.kcal + m.kcal,
     }),
-    { protein_g: 0, fat_g: 0, carbs_g: 0 }
+    { protein_g: 0, fat_g: 0, carbs_g: 0, kcal: 0 }
   );
+  const mealsBySlot = Object.fromEntries(MEAL_SLOTS.map((s) => [s.id, [] as typeof meals])) as Record<
+    MealSlot,
+    typeof meals
+  >;
+  meals.forEach((m) => mealsBySlot[mealSlotFromTime(m.logged_at)].push(m));
+
+  const slotSections = MEAL_SLOTS.map((slot) => {
+    const slotMeals = mealsBySlot[slot.id];
+    const slotKcal = slotMeals.reduce((sum, m) => sum + m.kcal, 0);
+    const itemsHtml = slotMeals.length
+      ? slotMeals
+          .map(
+            (m) => `
+          <div class="record-item">
+            <div class="record-item__main">
+              <strong>${m.name}</strong>
+              <span class="muted">${formatTime(m.logged_at)} · ${m.kcal} kcal · P${m.protein_g.toFixed(1)} F${m.fat_g.toFixed(1)} C${m.carbs_g.toFixed(1)}</span>
+            </div>
+            <button type="button" class="btn-delete" data-delete-id="${m.id}" data-delete-kind="meal">削除</button>
+          </div>`
+          )
+          .join("")
+      : `<p class="record-empty">まだ記録がありません</p>`;
+
+    return `
+      <section class="record-section meal-section">
+        <div class="record-section__head">
+          <div class="record-section__icon" aria-hidden="true">${slot.icon}</div>
+          <div class="record-section__title">
+            <strong>${slot.label}</strong>
+            <span class="record-section__value">${slotKcal > 0 ? `${slotKcal} kcal` : "—"}</span>
+          </div>
+        </div>
+        <div class="record-section__body">${itemsHtml}</div>
+        <div class="record-section__actions">
+          <button type="button" class="record-action-btn" data-barcode-btn>
+            <span class="record-action-btn__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h2v10H4zM8 7h1v10H8zM11 7h2v10h-2zM15 7h1v10h-1zM18 7h2v10h-2z"/></svg>
+            </span>
+            バーコード
+          </button>
+        </div>
+      </section>`;
+  }).join("");
+
+  const presetsHtml = presets.length
+    ? presets
+        .map(
+          (p) =>
+            `<button class="preset-chip" data-id="${p.id}"><strong>${p.name}</strong><span>${p.kcal} kcal</span></button>`
+        )
+        .join("")
+    : `<p class="muted record-empty">Myセットがありません</p>`;
 
   app.innerHTML = `
-    <div class="page">
-      <header class="page-header">
-        <h1 class="page-title">食事</h1>
-        <p class="page-subtitle">${date}</p>
+    <div class="page page--record">
+      <header class="record-banner">
+        <div>
+          <h1 class="record-banner__title">食事</h1>
+          <p class="record-banner__month">${formatMonthJa(date)}</p>
+        </div>
+        <div class="record-banner__total">
+          <span class="record-banner__total-label">合計</span>
+          <span class="record-banner__total-value">${totals.kcal} kcal</span>
+        </div>
       </header>
-      <div class="card mint">
-        <div class="stat-label">P / F / C 合計</div>
-        <div class="stat-lg">${totals.protein_g.toFixed(1)} <span class="muted" style="font-size:1rem">/ ${totals.fat_g.toFixed(1)} / ${totals.carbs_g.toFixed(1)} g</span></div>
+      ${renderDateStrip(date, "meals")}
+      <div class="record-summary card">
+        <div class="record-summary__label">P / F / C 合計</div>
+        <div class="record-summary__value">${totals.protein_g.toFixed(1)} <span class="muted">/ ${totals.fat_g.toFixed(1)} / ${totals.carbs_g.toFixed(1)} g</span></div>
       </div>
-      <button class="btn btn-primary btn-block" id="barcode-btn" style="margin-bottom:20px">バーコードで記録</button>
       <p class="section-title">Myセット</p>
-      <div class="preset-grid">
-        ${
-          presets.length
-            ? presets
-                .map(
-                  (p) =>
-                    `<button class="preset-btn" data-id="${p.id}"><strong>${p.name}</strong><span class="muted">${p.kcal} kcal · P${p.protein_g} F${p.fat_g} C${p.carbs_g}</span></button>`
-                )
-                .join("")
-            : `<p class="muted">Myセットがありません</p>`
-        }
-      </div>
-      <div class="card" style="margin-top:16px">
-        <div class="section-title">今日の記録</div>
-        ${
-          meals.length
-            ? meals
-                .map(
-                  (m) => `
-            <div class="list-row">
-              <div class="list-row-main">
-                <strong>${m.name}</strong>
-                <span class="muted"> · ${formatTime(m.logged_at)} · ${m.kcal} kcal</span>
-              </div>
-              <button type="button" class="btn-delete" data-delete-id="${m.id}" data-delete-kind="meal">削除</button>
-            </div>`
-                )
-                .join("")
-            : `<p class="muted">まだ記録がありません</p>`
-        }
-      </div>
+      <div class="preset-scroll">${presetsHtml}</div>
+      ${slotSections}
     </div>
     ${renderTabs()}
   `;
   bindTabs();
-  document.getElementById("barcode-btn")!.addEventListener("click", () => {
-    openBarcodeFlow(date, renderMeals);
+  bindDateStrip("meals", renderMeals);
+  document.querySelectorAll("[data-barcode-btn]").forEach((el) => {
+    el.addEventListener("click", () => openBarcodeFlow(date, renderMeals));
   });
   presets.forEach((p) => {
     document.querySelector(`[data-id="${p.id}"]`)!.addEventListener("click", async () => {
@@ -376,83 +494,133 @@ async function renderMeals(): Promise<void> {
 }
 
 async function renderExercise(): Promise<void> {
-  const date = todayIso();
-  const [templates, treadmill, strength] = await Promise.all([
+  const date = selectedDate;
+  const [templates, treadmill, strength, dashboard] = await Promise.all([
     api.getStrengthTemplates(),
     api.getTreadmillLogs(date),
     api.getStrengthLogs(date),
+    api.getDashboardTop(date),
   ]);
   const templateNames = Object.fromEntries(templates.map((t) => [t.code, t.name]));
+  const totalKcal = dashboard.cards.exercise_kcal;
+  const steps = dashboard.cards.steps;
+
+  const treadmillItems = treadmill.length
+    ? treadmill
+        .map(
+          (t) => `
+        <div class="record-item">
+          <div class="record-item__main">
+            <strong>トレッドミル ${t.minutes} 分</strong>
+            <span class="muted">${formatTime(t.logged_at)} · ${t.calculated_kcal} kcal</span>
+          </div>
+          <button type="button" class="btn-delete" data-delete-id="${t.id}" data-delete-kind="treadmill">削除</button>
+        </div>`
+        )
+        .join("")
+    : `<p class="record-empty">まだ記録がありません</p>`;
+
+  const strengthItems = strength.length
+    ? strength
+        .map(
+          (s) => `
+        <div class="record-item">
+          <div class="record-item__main">
+            <strong>${templateNames[s.exercise_code] ?? s.exercise_code}</strong>
+            <span class="muted">${s.minutes} 分 · ${formatTime(s.logged_at)} · ${s.calculated_kcal} kcal</span>
+          </div>
+          <button type="button" class="btn-delete" data-delete-id="${s.id}" data-delete-kind="strength">削除</button>
+        </div>`
+        )
+        .join("")
+    : `<p class="record-empty">まだ記録がありません</p>`;
 
   app.innerHTML = `
-    <div class="page">
-      <header class="page-header">
-        <h1 class="page-title">運動</h1>
-        <p class="page-subtitle">${date}</p>
-      </header>
-      <div class="card">
-        <h2 class="section-title">トレッドミル</h2>
-        <div class="field"><label>分数</label><input id="tm-min" type="number" value="30" /></div>
-        <div class="field"><label>マシン kcal（任意）</label><input id="tm-kcal" type="number" /></div>
-        <button class="btn btn-primary btn-block" id="tm-btn">記録</button>
-      </div>
-      <div class="card">
-        <h2 class="section-title">筋トレ</h2>
-        <div class="field"><label>種目</label>
-          <select id="st-code">${templates.map((t) => `<option value="${t.code}">${t.name}</option>`).join("")}</select>
+    <div class="page page--record">
+      <header class="record-banner">
+        <div>
+          <h1 class="record-banner__title">運動</h1>
+          <p class="record-banner__month">${formatMonthJa(date)}</p>
         </div>
-        <div class="field"><label>分数</label><input id="st-min" type="number" value="45" /></div>
-        <button class="btn btn-primary btn-block" id="st-btn">記録</button>
-      </div>
-      <div class="card">
-        <div class="section-title">今日のトレッドミル</div>
-        ${
-          treadmill.length
-            ? treadmill
-                .map(
-                  (t) => `
-            <div class="list-row">
-              <div class="list-row-main">
-                <strong>${t.minutes} 分</strong>
-                <span class="muted"> · ${formatTime(t.logged_at)} · ${t.calculated_kcal} kcal</span>
-              </div>
-              <button type="button" class="btn-delete" data-delete-id="${t.id}" data-delete-kind="treadmill">削除</button>
-            </div>`
-                )
-                .join("")
-            : `<p class="muted">まだ記録がありません</p>`
-        }
-      </div>
-      <div class="card">
-        <div class="section-title">今日の筋トレ</div>
-        ${
-          strength.length
-            ? strength
-                .map(
-                  (s) => `
-            <div class="list-row">
-              <div class="list-row-main">
-                <strong>${templateNames[s.exercise_code] ?? s.exercise_code}</strong>
-                <span class="muted"> · ${s.minutes} 分 · ${formatTime(s.logged_at)} · ${s.calculated_kcal} kcal</span>
-              </div>
-              <button type="button" class="btn-delete" data-delete-id="${s.id}" data-delete-kind="strength">削除</button>
-            </div>`
-                )
-                .join("")
-            : `<p class="muted">まだ記録がありません</p>`
-        }
-      </div>
+        <div class="record-banner__total">
+          <span class="record-banner__total-label">消費</span>
+          <span class="record-banner__total-value">${totalKcal} kcal</span>
+        </div>
+      </header>
+      ${renderDateStrip(date, "exercise")}
+      <section class="record-section exercise-section">
+        <div class="record-section__head">
+          <div class="record-section__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="14" cy="6" r="2.2" fill="currentColor" opacity=".25"/><path d="M4 19l5-7 3 3 5-8 3 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="record-section__title">
+            <strong>運動</strong>
+            <span class="record-section__value">${totalKcal} kcal</span>
+          </div>
+        </div>
+        <div class="record-subrow">
+          <span class="record-subrow__label">[ヘルスケア] 歩数</span>
+          <span class="record-subrow__value">${steps.toLocaleString()} 歩</span>
+        </div>
+      </section>
+      <section class="record-section exercise-section">
+        <div class="record-section__head">
+          <div class="record-section__icon record-section__icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 15h16M6 15l2-8h8l2 8" fill="currentColor" opacity=".15"/><path d="M8 19h8" stroke-linecap="round"/></svg>
+          </div>
+          <div class="record-section__title">
+            <strong>トレッドミル</strong>
+            <span class="record-section__value">${treadmill.reduce((s, t) => s + t.calculated_kcal, 0)} kcal</span>
+          </div>
+          <button type="button" class="record-section__edit" data-toggle-form="tm-form" aria-label="トレッドミルを記録">記録</button>
+        </div>
+        <div class="record-section__body">${treadmillItems}</div>
+        <form id="tm-form" class="record-form is-collapsed">
+          <div class="field"><label>分数</label><input id="tm-min" type="number" value="30" /></div>
+          <div class="field"><label>マシン kcal（任意）</label><input id="tm-kcal" type="number" /></div>
+          <button class="btn btn-primary btn-block" type="submit">追加</button>
+        </form>
+      </section>
+      <section class="record-section exercise-section">
+        <div class="record-section__head">
+          <div class="record-section__icon record-section__icon--orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="5" r="2.2" fill="currentColor" opacity=".25"/><path d="M8 21v-5a4 4 0 018 0v5M7 12c1.5-1 3-1.5 5-1.5s3.5.5 5 1.5"/></svg>
+          </div>
+          <div class="record-section__title">
+            <strong>筋トレ</strong>
+            <span class="record-section__value">${strength.reduce((s, t) => s + t.calculated_kcal, 0)} kcal</span>
+          </div>
+          <button type="button" class="record-section__edit" data-toggle-form="st-form" aria-label="筋トレを記録">記録</button>
+        </div>
+        <div class="record-section__body">${strengthItems}</div>
+        <form id="st-form" class="record-form is-collapsed">
+          <div class="field"><label>種目</label>
+            <select id="st-code">${templates.map((t) => `<option value="${t.code}">${t.name}</option>`).join("")}</select>
+          </div>
+          <div class="field"><label>分数</label><input id="st-min" type="number" value="45" /></div>
+          <button class="btn btn-primary btn-block" type="submit">追加</button>
+        </form>
+      </section>
     </div>
     ${renderTabs()}
   `;
   bindTabs();
-  document.getElementById("tm-btn")!.addEventListener("click", async () => {
+  bindDateStrip("exercise", renderExercise);
+  document.querySelectorAll("[data-toggle-form]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const formId = (el as HTMLElement).dataset.toggleForm;
+      document.getElementById(formId!)?.classList.toggle("is-collapsed");
+    });
+  });
+  document.getElementById("tm-form")!.addEventListener("submit", async (e) => {
+    e.preventDefault();
     const minutes = Number((document.getElementById("tm-min") as HTMLInputElement).value);
     const kcalRaw = (document.getElementById("tm-kcal") as HTMLInputElement).value;
     await api.addTreadmill(minutes, kcalRaw ? Number(kcalRaw) : undefined);
     await renderExercise();
   });
-  document.getElementById("st-btn")!.addEventListener("click", async () => {
+  document.getElementById("st-form")!.addEventListener("submit", async (e) => {
+    e.preventDefault();
     const code = (document.getElementById("st-code") as HTMLSelectElement).value;
     const minutes = Number((document.getElementById("st-min") as HTMLInputElement).value);
     await api.addStrength(code, minutes);
