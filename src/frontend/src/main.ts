@@ -1,12 +1,32 @@
 import "./styles/notion.css";
 import { api } from "./api/client";
 import { openBarcodeFlow } from "./barcode-flow";
-import type { DashboardToday, ProfileUpdate } from "./types";
+import type {
+  DashboardTop,
+  HistoryMetric,
+  HistoryPeriod,
+  Profile,
+  ProfileUpdate,
+} from "./types";
 
-type Tab = "today" | "meals" | "walks" | "exercise" | "week";
+type Tab = "top" | "meals" | "exercise" | "settings";
 
 const app = document.getElementById("app")!;
-let currentTab: Tab = "today";
+let currentTab: Tab = "top";
+let historyView: { metric: HistoryMetric; label: string } | null = null;
+let historyPeriod: HistoryPeriod = "day";
+
+const CARD_ORDER: { metric: HistoryMetric; label: string; large?: boolean }[] = [
+  { metric: "balance", label: "収支", large: true },
+  { metric: "weight", label: "体重" },
+  { metric: "intake", label: "摂取" },
+  { metric: "bmr", label: "基礎代謝" },
+  { metric: "exercise", label: "消費" },
+  { metric: "steps", label: "歩数" },
+  { metric: "body_fat_pct", label: "体脂肪率" },
+  { metric: "bmi", label: "BMI" },
+  { metric: "lbm", label: "LBM" },
+];
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -16,8 +36,31 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
 }
 
-function recordDate(iso: string): string {
-  return iso.slice(0, 10);
+function formatValue(metric: HistoryMetric, value: number | null | undefined): string {
+  if (value == null) return "--";
+  if (metric === "balance") return `${Math.round(value)} kcal`;
+  if (metric === "weight" || metric === "lbm") return `${value.toFixed(1)} kg`;
+  if (metric === "body_fat_pct") return `${value.toFixed(1)} %`;
+  if (metric === "bmi") return value.toFixed(1);
+  if (metric === "steps") return `${Math.round(value).toLocaleString()} 歩`;
+  return `${Math.round(value)} kcal`;
+}
+
+function cardValue(d: DashboardTop, metric: HistoryMetric): number | null {
+  if (metric === "balance") return d.balance.computable ? d.balance.value : null;
+  const c = d.cards;
+  const map: Record<HistoryMetric, number | null> = {
+    balance: d.balance.value,
+    weight: c.weight_kg,
+    intake: c.intake_kcal,
+    bmr: c.bmr_kcal,
+    exercise: c.exercise_kcal,
+    steps: c.steps,
+    body_fat_pct: c.body_fat_pct,
+    bmi: c.bmi,
+    lbm: c.lbm_kg,
+  };
+  return map[metric];
 }
 
 function bindDeleteButtons(
@@ -40,68 +83,24 @@ async function ensureProfile(): Promise<boolean> {
   try {
     const p = await api.getProfile();
     if (!p.setup_completed) {
-      renderSetup();
+      currentTab = "settings";
+      await renderSettings(p, true);
       return false;
     }
     return true;
   } catch {
-    renderSetup();
+    currentTab = "settings";
+    await renderSettings(null, true);
     return false;
   }
 }
 
-function renderSetup(): void {
-  app.innerHTML = `
-    <div class="page">
-      <h1 class="page-title">初回設定</h1>
-      <form id="setup-form">
-        <div class="field"><label>身長 (cm)</label><input name="height_cm" type="number" value="175" required /></div>
-        <div class="field"><label>生年月日</label><input name="birth_date" type="date" value="1990-01-15" required /></div>
-        <div class="field"><label>性別</label>
-          <select name="sex"><option value="male">男性</option><option value="female">女性</option></select>
-        </div>
-        <div class="field"><label>体重 (kg)</label><input name="current_weight_kg" type="number" step="0.1" value="72" required /></div>
-        <div class="field"><label>活動量</label>
-          <select name="activity_factor">
-            <option value="1.2">低い</option>
-            <option value="1.375" selected>やや active</option>
-            <option value="1.55">active</option>
-            <option value="1.725">高い</option>
-          </select>
-        </div>
-        <button class="btn btn-primary btn-block" type="submit">はじめる</button>
-        <p id="setup-error" class="error"></p>
-      </form>
-    </div>
-  `;
-  document.getElementById("setup-form")!.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const fd = new FormData(e.target as HTMLFormElement);
-    const body: ProfileUpdate = {
-      height_cm: Number(fd.get("height_cm")),
-      birth_date: String(fd.get("birth_date")),
-      sex: String(fd.get("sex")) as "male" | "female",
-      activity_factor: Number(fd.get("activity_factor")),
-      current_weight_kg: Number(fd.get("current_weight_kg")),
-      setup_completed: true,
-    };
-    try {
-      await api.putProfile(body);
-      currentTab = "today";
-      await render();
-    } catch (err) {
-      (document.getElementById("setup-error")!.textContent = String(err));
-    }
-  });
-}
-
 function renderTabs(): string {
   const tabs: { id: Tab; label: string }[] = [
-    { id: "today", label: "今日" },
+    { id: "top", label: "TOP" },
     { id: "meals", label: "食事" },
-    { id: "walks", label: "散歩" },
     { id: "exercise", label: "運動" },
-    { id: "week", label: "週" },
+    { id: "settings", label: "設定" },
   ];
   return `<nav class="tab-bar">${tabs
     .map(
@@ -111,75 +110,131 @@ function renderTabs(): string {
     .join("")}</nav>`;
 }
 
-function renderDashboard(d: DashboardToday, todayWeightsHtml = ""): string {
-  return `
-    <div class="page">
-      <h1 class="page-title">今日</h1>
-      <div class="card mint">
-        <div class="stat-label">残り kcal</div>
-        <div class="stat-lg">${Math.round(d.remaining.kcal)}</div>
-        <div class="muted">摂取 ${d.intake.kcal} / 目標 ${d.targets.kcal} + 消費 ${d.burn.total_kcal}</div>
-      </div>
-      <div class="card peach">
-        <div class="stat-label">P / F / C 残り (g)</div>
-        <div>${d.remaining.protein_g} / ${d.remaining.fat_g} / ${d.remaining.carbs_g}</div>
-      </div>
-      <div class="card sky">
-        <div class="stat-label">消費 kcal 内訳</div>
-        <div>歩行 ${d.burn.walk_kcal} · ミル ${d.burn.treadmill_kcal} · 筋トレ ${d.burn.strength_kcal}</div>
-      </div>
-      <div class="card lavender">
-        <div class="stat-label">歩数 / 体重</div>
-        <div class="stat-lg">${d.steps.toLocaleString()} 歩</div>
-        <div>${d.weight_kg != null ? `${d.weight_kg} kg` : "—"} · 散歩 ${d.walk_sessions_today} 回</div>
-      </div>
-      ${todayWeightsHtml}
-      <button class="btn btn-primary fab" id="walk-fab">散歩した</button>
-    </div>
-    ${renderTabs()}
-  `;
+function bindTabs(): void {
+  document.querySelectorAll(".tab").forEach((el) => {
+    el.addEventListener("click", () => {
+      historyView = null;
+      currentTab = (el as HTMLElement).dataset.tab as Tab;
+      render();
+    });
+  });
 }
 
-async function renderToday(): Promise<void> {
+function renderTopCards(d: DashboardTop): string {
+  const balanceHint =
+    d.bmr_status === "lbm_missing"
+      ? `<p class="muted card-hint">Health で LBM を同期してください</p>`
+      : "";
+
+  const cardsHtml = CARD_ORDER.map((card) => {
+    const val = cardValue(d, card.metric);
+    const deficit =
+      card.metric === "balance" && val != null && val < 0 ? " balance-deficit" : "";
+    const size = card.large ? " card-hero" : "";
+    return `
+      <button type="button" class="metric-card${size}${deficit}" data-metric="${card.metric}" data-label="${card.label}">
+        <div class="stat-label">${card.label}</div>
+        <div class="stat-lg">${formatValue(card.metric, val)}</div>
+        ${card.metric === "bmr" ? balanceHint : ""}
+      </button>`;
+  }).join("");
+
+  return `
+    <div class="page">
+      <h1 class="page-title">健康管理</h1>
+      <div class="card-scroll">${cardsHtml}</div>
+      <p class="muted">カードをタップで推移を表示（マイナス収支＝痩せ方向）</p>
+    </div>
+    ${renderTabs()}`;
+}
+
+async function renderTop(): Promise<void> {
+  const d = await api.getDashboardTop();
+  app.innerHTML = renderTopCards(d);
+  bindTabs();
+  document.querySelectorAll(".metric-card").forEach((el) => {
+    el.addEventListener("click", () => {
+      historyView = {
+        metric: (el as HTMLElement).dataset.metric as HistoryMetric,
+        label: (el as HTMLElement).dataset.label ?? "",
+      };
+      historyPeriod = "day";
+      renderHistory();
+    });
+  });
+}
+
+async function renderHistory(): Promise<void> {
+  if (!historyView) return;
   const date = todayIso();
-  const [d, weights] = await Promise.all([api.getDashboard(), api.getWeights()]);
-  const todayWeights = weights.filter((w) => recordDate(w.logged_at) === date);
-  const todayWeightsHtml = todayWeights.length
-    ? `
-      <div class="card">
-        <div class="stat-label">今日の体重記録（削除可）</div>
-        ${todayWeights
+  const hist = await api.getDashboardHistory(historyView.metric, historyPeriod, date);
+  const periods: HistoryPeriod[] = ["day", "week", "month", "year"];
+  const periodLabels: Record<HistoryPeriod, string> = {
+    day: "日",
+    week: "週",
+    month: "月",
+    year: "年",
+  };
+
+  app.innerHTML = `
+    <div class="page">
+      <button type="button" class="btn btn-block modal-secondary" id="history-back">← TOP</button>
+      <h1 class="page-title">${historyView.label}</h1>
+      <div class="segmented">
+        ${periods
           .map(
-            (w) => `
-          <div class="list-row">
-            <div class="list-row-main">
-              <strong>${w.weight_kg} kg</strong>
-              <span class="muted"> · ${formatTime(w.logged_at)} · ${w.source}</span>
-            </div>
-            <button type="button" class="btn-delete" data-delete-id="${w.id}" data-delete-kind="weight">削除</button>
-          </div>`
+            (p) =>
+              `<button type="button" class="segment ${historyPeriod === p ? "active" : ""}" data-period="${p}">${periodLabels[p]}</button>`
           )
           .join("")}
-      </div>`
-    : "";
-  app.innerHTML = renderDashboard(d, todayWeightsHtml);
-  bindTabs();
-  document.getElementById("walk-fab")!.addEventListener("click", async () => {
-    const note = prompt("発見メモ（任意）") ?? undefined;
-    await api.recordWalk(note);
-    await renderToday();
+      </div>
+      <div class="card">
+        ${hist.points
+          .slice()
+          .reverse()
+          .map(
+            (pt) =>
+              `<div class="list-row"><div class="list-row-main"><strong>${pt.label}</strong></div><div>${formatValue(historyView!.metric, pt.value)}</div></div>`
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+
+  document.getElementById("history-back")!.addEventListener("click", () => {
+    historyView = null;
+    currentTab = "top";
+    render();
   });
-  bindDeleteButtons('[data-delete-kind="weight"]', api.deleteWeight, renderToday);
+  document.querySelectorAll(".segment").forEach((el) => {
+    el.addEventListener("click", () => {
+      historyPeriod = (el as HTMLElement).dataset.period as HistoryPeriod;
+      renderHistory();
+    });
+  });
 }
 
 async function renderMeals(): Promise<void> {
   const date = todayIso();
   const [presets, meals] = await Promise.all([api.getPresets(), api.getMeals(date)]);
+  const totals = meals.reduce(
+    (acc, m) => ({
+      protein_g: acc.protein_g + m.protein_g,
+      fat_g: acc.fat_g + m.fat_g,
+      carbs_g: acc.carbs_g + m.carbs_g,
+    }),
+    { protein_g: 0, fat_g: 0, carbs_g: 0 }
+  );
+
   app.innerHTML = `
     <div class="page">
       <h1 class="page-title">食事</h1>
+      <div class="card mint">
+        <div class="stat-label">今日の P / F / C 合計 (g)</div>
+        <div class="stat-lg">${totals.protein_g.toFixed(1)} / ${totals.fat_g.toFixed(1)} / ${totals.carbs_g.toFixed(1)}</div>
+      </div>
       <button class="btn btn-primary btn-block" id="barcode-btn">バーコード</button>
-      <p class="muted">定番をタップで記録（${date}）</p>
+      <p class="muted">Myセット（${date}）</p>
       <div class="preset-grid">
         ${
           presets.length
@@ -189,7 +244,7 @@ async function renderMeals(): Promise<void> {
                     `<button class="preset-btn" data-id="${p.id}"><strong>${p.name}</strong><span class="muted">${p.kcal} kcal · P${p.protein_g} F${p.fat_g} C${p.carbs_g}</span></button>`
                 )
                 .join("")
-            : `<p class="muted">プリセットがありません。API から追加してください。</p>`
+            : `<p class="muted">Myセットがありません</p>`
         }
       </div>
       <div class="card" style="margin-top:16px">
@@ -227,45 +282,6 @@ async function renderMeals(): Promise<void> {
   bindDeleteButtons('[data-delete-kind="meal"]', api.deleteMeal, renderMeals);
 }
 
-async function renderWalks(): Promise<void> {
-  const date = todayIso();
-  const walks = (await api.getWalks()).filter((w) => recordDate(w.walked_at) === date);
-  app.innerHTML = `
-    <div class="page">
-      <h1 class="page-title">散歩</h1>
-      <button class="btn btn-primary btn-block" id="walk-btn">散歩した</button>
-      <p class="muted" style="margin-top:12px">iPhone の歩数はショートカットで自動同期されます。</p>
-      <div class="card" style="margin-top:16px">
-        <div class="stat-label">今日の散歩</div>
-        ${
-          walks.length
-            ? walks
-                .map(
-                  (w) => `
-            <div class="list-row">
-              <div class="list-row-main">
-                <strong>${formatTime(w.walked_at)}</strong>
-                <span class="muted">${w.discovery_note ? ` · ${w.discovery_note}` : ""}</span>
-              </div>
-              <button type="button" class="btn-delete" data-delete-id="${w.id}" data-delete-kind="walk">削除</button>
-            </div>`
-                )
-                .join("")
-            : `<p class="muted">まだ記録がありません</p>`
-        }
-      </div>
-    </div>
-    ${renderTabs()}
-  `;
-  bindTabs();
-  document.getElementById("walk-btn")!.addEventListener("click", async () => {
-    const note = prompt("発見メモ（任意）") ?? undefined;
-    await api.recordWalk(note);
-    await renderWalks();
-  });
-  bindDeleteButtons('[data-delete-kind="walk"]', api.deleteWalk, renderWalks);
-}
-
 async function renderExercise(): Promise<void> {
   const date = todayIso();
   const [templates, treadmill, strength] = await Promise.all([
@@ -274,6 +290,7 @@ async function renderExercise(): Promise<void> {
     api.getStrengthLogs(date),
   ]);
   const templateNames = Object.fromEntries(templates.map((t) => [t.code, t.name]));
+
   app.innerHTML = `
     <div class="page">
       <h1 class="page-title">運動</h1>
@@ -349,52 +366,67 @@ async function renderExercise(): Promise<void> {
   bindDeleteButtons('[data-delete-kind="strength"]', api.deleteStrength, renderExercise);
 }
 
-async function renderWeek(): Promise<void> {
-  const w = await api.getWeekSummary();
+async function renderSettings(existing: Profile | null, isSetup = false): Promise<void> {
+  const p = existing ?? (await api.getProfile().catch(() => null));
   app.innerHTML = `
     <div class="page">
-      <h1 class="page-title">週サマリー</h1>
-      <div class="card mint">
-        <div class="stat-label">平均摂取 kcal</div>
-        <div class="stat-lg">${w.avg_intake_kcal}</div>
-      </div>
-      <div class="card sky">
-        <div class="stat-label">平均歩数</div>
-        <div class="stat-lg">${Math.round(w.avg_steps).toLocaleString()}</div>
-      </div>
-      <div class="card lavender">
-        <div class="stat-label">運動回数</div>
-        <div>散歩 ${w.counts.walk_sessions} · ミル ${w.counts.treadmill_sessions} · 筋トレ ${w.counts.strength_sessions}</div>
-      </div>
-      <div class="card">
-        <div class="stat-label">体重推移</div>
-        ${w.weight_trend
-          .map((r) => `<div class="list-item">${r.date}: ${r.weight_kg ?? "—"} kg</div>`)
-          .join("")}
-      </div>
+      <h1 class="page-title">${isSetup ? "初回設定" : "設定"}</h1>
+      <form id="settings-form">
+        <div class="field"><label>身長 (cm)</label><input name="height_cm" type="number" value="${p?.height_cm ?? 175}" required /></div>
+        <div class="field"><label>生年月日</label><input name="birth_date" type="date" value="${p?.birth_date ?? "1990-01-15"}" required /></div>
+        <div class="field"><label>性別</label>
+          <select name="sex">
+            <option value="male" ${p?.sex === "female" ? "" : "selected"}>男性</option>
+            <option value="female" ${p?.sex === "female" ? "selected" : ""}>女性</option>
+          </select>
+        </div>
+        <div class="field"><label>体重 (kg)</label><input name="current_weight_kg" type="number" step="0.1" value="${p?.initial_weight_kg ?? 72}" required /></div>
+        <div class="field"><label>NEAT (kcal)</label><input name="neat_kcal" type="number" value="${p?.neat_kcal ?? 200}" required /></div>
+        <div class="field"><label>TEF 率 (%)</label><input name="tef_pct" type="number" step="1" value="${((p?.tef_rate ?? 0.1) * 100).toFixed(0)}" required /></div>
+        <button class="btn btn-primary btn-block" type="submit">${isSetup ? "はじめる" : "保存"}</button>
+        <p id="settings-error" class="error"></p>
+      </form>
     </div>
-    ${renderTabs()}
+    ${isSetup ? "" : renderTabs()}
   `;
-  bindTabs();
-}
-
-function bindTabs(): void {
-  document.querySelectorAll(".tab").forEach((el) => {
-    el.addEventListener("click", () => {
-      currentTab = (el as HTMLElement).dataset.tab as Tab;
-      render();
-    });
+  if (!isSetup) bindTabs();
+  document.getElementById("settings-form")!.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target as HTMLFormElement);
+    const body: ProfileUpdate = {
+      height_cm: Number(fd.get("height_cm")),
+      birth_date: String(fd.get("birth_date")),
+      sex: String(fd.get("sex")) as "male" | "female",
+      current_weight_kg: Number(fd.get("current_weight_kg")),
+      neat_kcal: Number(fd.get("neat_kcal")),
+      tef_rate: Number(fd.get("tef_pct")) / 100,
+      setup_completed: true,
+    };
+    try {
+      await api.putProfile(body);
+      if (isSetup) {
+        currentTab = "top";
+        await render();
+      } else {
+        await renderSettings(await api.getProfile());
+      }
+    } catch (err) {
+      (document.getElementById("settings-error")!.textContent = String(err));
+    }
   });
 }
 
 async function render(): Promise<void> {
-  if (!(await ensureProfile())) return;
+  if (historyView) {
+    await renderHistory();
+    return;
+  }
+  if (currentTab !== "settings" && !(await ensureProfile())) return;
   try {
-    if (currentTab === "today") await renderToday();
+    if (currentTab === "top") await renderTop();
     else if (currentTab === "meals") await renderMeals();
-    else if (currentTab === "walks") await renderWalks();
     else if (currentTab === "exercise") await renderExercise();
-    else if (currentTab === "week") await renderWeek();
+    else if (currentTab === "settings") await renderSettings(await api.getProfile());
   } catch (err) {
     app.innerHTML = `<div class="page"><p class="error">${String(err)}</p></div>${renderTabs()}`;
     bindTabs();

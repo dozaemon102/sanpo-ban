@@ -58,6 +58,14 @@ def walk_burn_kcal(steps: int, weight_kg: float) -> int:
     return int(steps * weight_kg * 0.0005)
 
 
+def katch_mcardle_bmr(lbm_kg: float) -> int:
+    return int(370 + 21.6 * lbm_kg)
+
+
+def tef_kcal(intake_kcal: int, tef_rate: float) -> int:
+    return int(intake_kcal * tef_rate)
+
+
 def treadmill_met(speed_kmh: float | None) -> float:
     if speed_kmh is None:
         return 9.0

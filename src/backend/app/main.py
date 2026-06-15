@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 
-app = FastAPI(title="Sanpo-ban API", version="1.0.0")
+app = FastAPI(title="Kenko-kanri API", version="3.0.0")
 
 app.add_middleware(
     CORSMiddleware,

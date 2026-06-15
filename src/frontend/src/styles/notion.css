@@ -271,3 +271,58 @@ body {
   max-width: calc(100% - 32px);
   text-align: center;
 }
+
+.card-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.metric-card {
+  text-align: left;
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.metric-card.card-hero {
+  background: var(--lavender);
+  border-color: transparent;
+  padding: 20px;
+}
+
+.metric-card.card-hero .stat-lg {
+  font-size: 2.5rem;
+}
+
+.metric-card.balance-deficit .stat-lg {
+  color: var(--success);
+}
+
+.card-hint {
+  margin: 8px 0 0;
+}
+
+.segmented {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.segment {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+  background: var(--canvas);
+  cursor: pointer;
+}
+
+.segment.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}

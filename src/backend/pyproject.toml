@@ -1,5 +1,5 @@
 [project]
-name = "sanpo-ban-api"
+name = "kenko-kanri-api"
 version = "1.0.0"
 description = "Sanpo-ban diet dashboard API"
 requires-python = ">=3.12"

@@ -1,86 +1,74 @@
 # 最終受入レポート
 
-- **feature:** sanpo-ban v2 バーコード
-- **受入日:** 2026-06-13
+- **feature:** 健康管理（kenko-kanri）v3 UI 刷新
+- **受入日:** 2026-06-14
 - **判定:** 条件付き合格
 
 ## サマリー
 
-v2 バーコード食事記録（Open Food Facts 連携）を Raspberry Pi 本番（ie-desktop）+ iPhone Safari で受入した。必須 AC（AC-014〜017）および v1.1 の AC-018 は達成。iOS Safari では **HTTPS（Tailscale Serve）** がライブカメラに必要であることを運用上確認。HTTP では「写真で読み取る」フォールバックで FR-037/039 を満たす。
+v3（収支ダッシュボード・4 タブ UI・DB `kenko_kanri`・散歩廃止）を実装し、自動テスト 16 件・frontend ビルドで検証した。必須 AC のうち API 系は pytest で達成。UI 表示名・PFC 合計のみ・Pi 実機は**人間デプロイ後**に最終確認が必要。
 
-**推奨 URL:** `https://ie-desktop.tail5bd839.ts.net/`
+v1/v2 機能（食事・バーコード・運動・Health 同期）は v3 上で継続。旧 AC-001〜018 の回帰は pytest で部分確認（食事・削除・バーコード）。
 
 ## 受入条件（AC）達成状況
 
-### v2 スコープ
+### v3 スコープ
 
-| AC ID | 内容 | 達成 | 根拠（テスト・手動確認） |
-|-------|------|------|------------------------|
-| AC-014 | 有効 JAN/EAN スキャン → 確認画面に名称・kcal・P/F/C | はい | Pi + iPhone（HTTPS）。backend `test_barcode.py` / API モック |
-| AC-015 | 確認画面追加 → 当日摂取合計増加 | はい | Pi UI 確認 |
-| AC-016 | OFF 未登録 → 手入力フォームへ | はい | 404 `BARCODE_NOT_FOUND` → 手入力 UI。`test_lookup_barcode_not_found` |
-| AC-017 | バーコード追加でプリセット件数不増 | はい | `food_preset_id: null` 固定。`test_barcode_lookup_api` で presets 0 件確認 |
-| AC-018 | 誤記録削除 → 集計から除外 | はい | v1.1 実装済。各タブ削除 UI（v1 受入で確認済、v2 でも継続） |
+| AC ID | 内容 | 達成 | 根拠 |
+|-------|------|------|------|
+| AC-019 | LBM 同期後、収支式一致 | **はい** | `test_balance_with_lbm` |
+| AC-020 | LBM 未同期時 `--` | **はい** | `test_health_sync_and_dashboard_top` |
+| AC-021 | カードタップで日/週/月/年 | **部分** | API `test_dashboard_history`。UI セグメント実装済、Pi 手動要 |
+| AC-022 | 散歩 UI/API なし | **はい** | `test_walk_api_removed` |
+| AC-023 | 表示名「健康管理」 | **はい** | dist/index.html, manifest, `main.ts` |
+| AC-024 | 食事タブ PFC 合計 g のみ | **部分** | `main.ts` 実装。Pi UI 手動要 |
+| AC-025 | NEAT/TEF 変更 → 収支反映 | **はい** | `test_neat_tef_affects_balance` |
 
-- **必須 AC 未達:** なし
+- **必須 AC 未達:** なし（AC-021/024 は API/コード達成、実機 UI は Pi デプロイ後確認）
 
-### v1 スコープ（参照）
+### v1/v2 スコープ（継続）
 
-AC-001〜013 は 2026-06-13 v1 受入（Pi + iPhone）で **承認済**。v2 変更による回帰なし。
+AC-002〜018 は v1/v2 受入済。v3 で廃止した AC-001/007/008/012 は **意図的廃止**（目標 kcal・散歩・週タブ）。AC-014〜017（バーコード）は `test_barcode.py` で回帰確認。
 
 ## トレーサビリティ（FR → 設計 → コード → テスト）
 
 | 要件 ID | 詳細設計 | 実装 | テスト | 状態 |
 |---------|----------|------|--------|------|
-| FR-015 | v2-barcode §2 GET /foods/barcode | `open_food_facts.py`, `routes.py` | `test_barcode.py` | OK |
-| FR-037 | v2-barcode §4.2 カメラ/手入力 | `barcode-flow.ts`（BarcodeDetector / ZXing / 写真） | 実機（Pi HTTPS） | OK |
-| FR-038 | v2-barcode §4.3 確認画面 | `barcode-flow.ts` renderConfirmForm | 実機 | OK |
-| FR-039 | v2-barcode §5.1 404/502 フォールバック | `barcode-flow.ts`, `errors.py` | `test_lookup_barcode_not_found` + 実機 | OK |
-| FR-036 | v1-core / v2 §10 | DELETE routes + 各タブ UI | v1 受入 | OK |
+| FR-040 | v3-balance-ui §3.1 | manifest, main.ts, pyproject | build grep | OK（repo フォルダ名は未 rename） |
+| FR-041〜047 | §2.2 dashboard/top | `dashboard_service.py` | test_balance_* | OK |
+| FR-044, FR-045 | §4.1 TOP | `main.ts` | test_dashboard_history | OK |
+| FR-048 | 4 タブ | `main.ts` | 手動 | OK |
+| FR-049, FR-043 | profile NEAT/TEF | migration 004, routes | test_neat_tef_* | OK |
+| FR-050, FR-051 | Myセット / PFC | `main.ts` | 手動 | OK |
+| FR-052, FR-053 | PWA / notion | manifest, notion.css | build | OK |
+| FR-015〜039 | v2-barcode | 継続 | test_barcode.py | OK |
+| FR-024〜026, FR-033 | 廃止 | routes 削除 | test_walk_api_removed | OK（廃止） |
 
 - **必須 FR の断絶:** なし
 
 ## 権限マトリクスの検証
 
-認証・認可なし（NFR-002）。v2 新 API も同一。LAN / Tailscale 内単一利用者前提 — **OK**。
-
-| 操作 / FR | 期待 | 実装・テスト | 状態 |
-|-----------|------|-------------|------|
-| FR-015〜039 | ROLE-001 全操作可 | 認可チェックなし（設計どおり） | OK |
+認証なし（NFR-002）。v3 新 API も同一 — **OK**。
 
 ## 将来要件の移管
 
-| FR ID | 概要 | 移管先 |
-|-------|------|--------|
-| FR-016 | 食べる判 ○△× | `docs/features/sanpo-ban/future.md` |
-| FR-032 | 筋トレ詳細（重量・セット） | 同上 |
-| FR-034 | 旅先モード | 同上 |
-| FR-035 | Instagram タグメモ | 同上 |
-| FR-014 | 食事複製（任意） | 同上 |
+変更なし（`future.md` 参照）。v3 で FR-016/032/034/035 は引き続き将来。
 
 ## verify-run 結果（参照）
 
 - **判定:** 条件付き合格（`reviews/verify-run.md`）
-- **補足:** Phase 5 時点は Pi 未検証だったが、本受入で Pi migration・build・restart・Tailscale HTTPS を完了
+- pytest 16 passed、build OK。Docker/Pi smoke 未実施
 
 ## review-code との整合
 
-- `reviews/code.md` の Critical: **0 件（すべて解消）**
-- Suggestion（Pi 反映・フロントテスト・duplicate barcode）は本受入で Pi 反映済。残: フロント自動テストなし（Suggestion のみ）
-
-## 運用メモ（v2 追加分）
-
-| 項目 | 内容 |
-|------|------|
-| HTTPS | iPhone Safari ライブカメラに必須。`tailscale serve --https=443 http://127.0.0.1:8080` |
-| HTTP | `http://100.76.191.46:8080` も利用可（カメラ以外）。バーコードは「写真で読み取る」 |
-| Alembic | Pi では `uv run alembic upgrade head` |
-| ショートカット | Health 同期 URL を HTTPS に更新推奨 |
+- Critical: **0 件**
+- Suggestion 5 件（infra README 旧名、dead code 等）— 受入阻害なし
 
 ## 未達・フォローアップ
 
 | 項目 | 対応 |
 |------|------|
-| フロントエンド自動テストなし | v3 以降または hotfix で検討 |
-| duplicate_meal が barcode を複製しない | v2.1 候補（任意） |
-| Tailscale Serve の永続化 | Pi 再起動後も serve 設定が残るか運用確認 |
+| Pi デプロイ | `kenko_kanri` DB + migration + systemd `kenko-kanri` |
+| AC-021/024 実機 | Pi 上で TOP 履歴・食事タブを目視確認 |
+| infra README | S-01: sanpo-ban 表記更新 |
+| リポジトリ rename | FR-040 完全化（任意） |

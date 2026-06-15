@@ -4,22 +4,12 @@ from decimal import Decimal
 from pydantic import BaseModel, Field, field_validator
 
 
-class TargetMacros(BaseModel):
-    kcal: int
-    protein_g: float
-    fat_g: float
-    carbs_g: float
-
-
 class ProfileResponse(BaseModel):
     height_cm: float
     birth_date: date
     sex: str
-    activity_factor: float
-    target_kcal: int
-    target_protein_g: float
-    target_fat_g: float
-    target_carbs_g: float
+    neat_kcal: int
+    tef_rate: float
     initial_weight_kg: float
     setup_completed: bool
 
@@ -30,12 +20,9 @@ class ProfileUpdate(BaseModel):
     height_cm: float = Field(ge=100, le=250)
     birth_date: date
     sex: str
-    activity_factor: float
     current_weight_kg: float = Field(ge=30, le=300)
-    target_kcal: int | None = Field(default=None, ge=1200)
-    target_protein_g: float | None = None
-    target_fat_g: float | None = None
-    target_carbs_g: float | None = None
+    neat_kcal: int | None = Field(default=None, ge=0, le=2000)
+    tef_rate: float | None = Field(default=None, ge=0, le=0.5)
     setup_completed: bool = False
 
 
@@ -53,18 +40,51 @@ class BurnTotals(BaseModel):
     total_kcal: int = 0
 
 
-class DashboardToday(BaseModel):
-    date: date
-    targets: TargetMacros
-    intake: MacroTotals
-    burn: BurnTotals
-    remaining: MacroTotals
-    steps: int = 0
+class BalanceBreakdown(BaseModel):
+    intake_kcal: int
+    bmr_kcal: int | None = None
+    neat_kcal: int
+    exercise_kcal: int
+    tef_kcal: int
+
+
+class BalanceInfo(BaseModel):
+    value: int | None = None
+    computable: bool
+    breakdown: BalanceBreakdown
+
+
+class DashboardCards(BaseModel):
     weight_kg: float | None = None
+    intake_kcal: int
+    bmr_kcal: int | None = None
+    exercise_kcal: int
+    steps: int
+    body_fat_pct: float | None = None
     bmi: float | None = None
     lbm_kg: float | None = None
-    body_fat_pct: float | None = None
-    walk_sessions_today: int = 0
+
+
+class DashboardTop(BaseModel):
+    date: date
+    balance: BalanceInfo
+    cards: DashboardCards
+    bmr_status: str
+    body_composition_source: str
+
+
+class HistoryPoint(BaseModel):
+    label: str
+    start_date: date
+    end_date: date
+    value: float | None = None
+
+
+class DashboardHistory(BaseModel):
+    metric: str
+    period: str
+    anchor_date: date
+    points: list[HistoryPoint]
 
 
 class FoodPresetCreate(BaseModel):
@@ -170,19 +190,6 @@ class HealthSyncRequest(BaseModel):
         return value
 
 
-class WalkCreate(BaseModel):
-    walked_at: datetime | None = None
-    discovery_note: str | None = Field(default=None, max_length=500)
-
-
-class WalkResponse(BaseModel):
-    id: int
-    walked_at: datetime
-    discovery_note: str | None
-
-    model_config = {"from_attributes": True}
-
-
 class TreadmillCreate(BaseModel):
     minutes: int = Field(ge=1, le=300)
     speed_kmh: float | None = None
@@ -215,12 +222,3 @@ class StrengthTemplate(BaseModel):
     code: str
     name: str
     met: float
-
-
-class WeekSummary(BaseModel):
-    start_date: date
-    end_date: date
-    avg_intake_kcal: float
-    avg_steps: float
-    weight_trend: list[dict]
-    counts: dict[str, int]

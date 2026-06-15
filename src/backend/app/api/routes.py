@@ -15,11 +15,11 @@ from app.models.entities import (
     StrengthLog,
     TreadmillLog,
     UserProfile,
-    WalkSession,
     WeightLog,
 )
 from app.schemas.api import (
-    DashboardToday,
+    DashboardHistory,
+    DashboardTop,
     FoodLookupResponse,
     FoodPresetCreate,
     FoodPresetResponse,
@@ -32,26 +32,20 @@ from app.schemas.api import (
     StrengthCreate,
     StrengthResponse,
     StrengthTemplate,
-    TargetMacros,
     TreadmillCreate,
     TreadmillResponse,
-    WalkCreate,
-    WalkResponse,
-    WeekSummary,
     WeightCreate,
     WeightResponse,
 )
-from app.services.calculations import (
-    STRENGTH_TEMPLATES,
-    strength_burn_kcal,
-    suggest_targets,
-    treadmill_burn_kcal,
-)
-from app.services.dashboard_service import build_dashboard, get_profile, week_summary
+from app.services.calculations import STRENGTH_TEMPLATES, strength_burn_kcal, treadmill_burn_kcal
+from app.services.dashboard_service import build_dashboard_top, build_history, get_profile
 from app.services.open_food_facts import lookup_barcode
 from app.services.weight_log_factory import create_weight_log
 
 router = APIRouter(prefix="/api/v1")
+
+DEFAULT_NEAT = 200
+DEFAULT_TEF = Decimal("0.100")
 
 
 def _profile_response(p: UserProfile) -> ProfileResponse:
@@ -59,11 +53,8 @@ def _profile_response(p: UserProfile) -> ProfileResponse:
         height_cm=float(p.height_cm),
         birth_date=p.birth_date,
         sex=p.sex,
-        activity_factor=float(p.activity_factor),
-        target_kcal=p.target_kcal,
-        target_protein_g=float(p.target_protein_g),
-        target_fat_g=float(p.target_fat_g),
-        target_carbs_g=float(p.target_carbs_g),
+        neat_kcal=p.neat_kcal,
+        tef_rate=float(p.tef_rate),
         initial_weight_kg=float(p.initial_weight_kg),
         setup_completed=p.setup_completed,
     )
@@ -79,28 +70,29 @@ def put_profile(body: ProfileUpdate, db: Session = Depends(get_db)) -> ProfileRe
     if body.sex not in ("male", "female"):
         raise validation_error("sex must be male or female")
     now = now_jst()
-    suggested = suggest_targets(
-        body.current_weight_kg,
-        body.height_cm,
-        body.birth_date,
-        body.sex,
-        body.activity_factor,
-        today_jst(),
-    )
     profile = db.get(UserProfile, 1)
     if profile is None:
-        profile = UserProfile(id=1, created_at=now, updated_at=now)
+        profile = UserProfile(
+            id=1,
+            neat_kcal=DEFAULT_NEAT,
+            tef_rate=DEFAULT_TEF,
+            created_at=now,
+            updated_at=now,
+        )
         db.add(profile)
 
     profile.height_cm = Decimal(str(body.height_cm))
     profile.birth_date = body.birth_date
     profile.sex = body.sex
-    profile.activity_factor = Decimal(str(body.activity_factor))
     profile.initial_weight_kg = Decimal(str(body.current_weight_kg))
-    profile.target_kcal = body.target_kcal or int(suggested["kcal"])
-    profile.target_protein_g = Decimal(str(body.target_protein_g or suggested["protein_g"]))
-    profile.target_fat_g = Decimal(str(body.target_fat_g or suggested["fat_g"]))
-    profile.target_carbs_g = Decimal(str(body.target_carbs_g or suggested["carbs_g"]))
+    if body.neat_kcal is not None:
+        profile.neat_kcal = body.neat_kcal
+    elif profile.neat_kcal is None:
+        profile.neat_kcal = DEFAULT_NEAT
+    if body.tef_rate is not None:
+        profile.tef_rate = Decimal(str(body.tef_rate))
+    elif profile.tef_rate is None:
+        profile.tef_rate = DEFAULT_TEF
     profile.setup_completed = body.setup_completed
     profile.updated_at = now
 
@@ -116,32 +108,25 @@ def put_profile(body: ProfileUpdate, db: Session = Depends(get_db)) -> ProfileRe
     return _profile_response(profile)
 
 
-@router.post("/profile/recalculate-targets", response_model=TargetMacros)
-def recalculate_targets(
-    body: dict | None = None,
-    db: Session = Depends(get_db),
-) -> TargetMacros:
-    profile = get_profile(db)
-    weight = float(profile.initial_weight_kg)
-    if body and body.get("current_weight_kg"):
-        weight = float(body["current_weight_kg"])
-    suggested = suggest_targets(
-        weight,
-        float(profile.height_cm),
-        profile.birth_date,
-        profile.sex,
-        float(profile.activity_factor),
-        today_jst(),
-    )
-    return TargetMacros(**{k: (int(v) if k == "kcal" else v) for k, v in suggested.items()})
-
-
-@router.get("/dashboard/today", response_model=DashboardToday)
-def dashboard_today(date: str | None = None, db: Session = Depends(get_db)) -> DashboardToday:
+@router.get("/dashboard/top", response_model=DashboardTop)
+def dashboard_top(date: str | None = None, db: Session = Depends(get_db)) -> DashboardTop:
     from datetime import date as date_cls
 
     on_date = date_cls.fromisoformat(date) if date else today_jst()
-    return build_dashboard(db, on_date)
+    return build_dashboard_top(db, on_date)
+
+
+@router.get("/dashboard/history/{metric}", response_model=DashboardHistory)
+def dashboard_history(
+    metric: str,
+    period: str,
+    anchor_date: str | None = None,
+    db: Session = Depends(get_db),
+) -> DashboardHistory:
+    from datetime import date as date_cls
+
+    anchor = date_cls.fromisoformat(anchor_date) if anchor_date else today_jst()
+    return build_history(db, metric, period, anchor)
 
 
 @router.get("/food-presets", response_model=list[FoodPresetResponse])
@@ -285,6 +270,7 @@ def sync_health(body: HealthSyncRequest, db: Session = Depends(get_db)) -> dict:
         steps_logged = True
 
     weight_logged = False
+    body_composition_logged = False
     if body.weight_kg is not None:
         db.add(
             create_weight_log(
@@ -297,6 +283,9 @@ def sync_health(body: HealthSyncRequest, db: Session = Depends(get_db)) -> dict:
             )
         )
         weight_logged = True
+        body_composition_logged = any(
+            v is not None for v in (body.bmi, body.lbm_kg, body.body_fat_pct)
+        )
 
     db.commit()
 
@@ -306,31 +295,8 @@ def sync_health(body: HealthSyncRequest, db: Session = Depends(get_db)) -> dict:
         "steps": steps_row.steps if steps_row else None,
         "steps_logged": steps_logged,
         "weight_logged": weight_logged,
+        "body_composition_logged": body_composition_logged,
     }
-
-
-@router.get("/walks", response_model=list[WalkResponse])
-def list_walks(limit: int = 30, db: Session = Depends(get_db)) -> list[WalkSession]:
-    return list(db.scalars(select(WalkSession).order_by(WalkSession.walked_at.desc()).limit(limit)))
-
-
-@router.post("/walks", response_model=WalkResponse, status_code=201)
-def create_walk(body: WalkCreate, db: Session = Depends(get_db)) -> WalkSession:
-    walk = WalkSession(walked_at=body.walked_at or now_jst(), discovery_note=body.discovery_note)
-    db.add(walk)
-    db.commit()
-    db.refresh(walk)
-    return walk
-
-
-@router.delete("/walks/{walk_id}", status_code=204)
-def delete_walk(walk_id: int, db: Session = Depends(get_db)) -> Response:
-    walk = db.get(WalkSession, walk_id)
-    if not walk:
-        raise not_found("Walk not found")
-    db.delete(walk)
-    db.commit()
-    return Response(status_code=204)
 
 
 @router.get("/exercises/treadmill", response_model=list[TreadmillResponse])
@@ -425,11 +391,3 @@ def delete_strength(log_id: int, db: Session = Depends(get_db)) -> Response:
     db.delete(row)
     db.commit()
     return Response(status_code=204)
-
-
-@router.get("/summary/week", response_model=WeekSummary)
-def summary_week(end_date: str | None = None, db: Session = Depends(get_db)) -> WeekSummary:
-    from datetime import date as date_cls
-
-    end = date_cls.fromisoformat(end_date) if end_date else today_jst()
-    return week_summary(db, end)

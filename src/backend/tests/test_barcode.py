@@ -56,7 +56,6 @@ def test_barcode_lookup_api(client):
             "height_cm": 175,
             "birth_date": "1990-01-15",
             "sex": "male",
-            "activity_factor": 1.375,
             "current_weight_kg": 72,
             "setup_completed": True,
         },

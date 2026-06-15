@@ -1,80 +1,79 @@
 import pytest
-from app.services.calculations import suggest_targets, walk_burn_kcal
+from app.services.calculations import katch_mcardle_bmr, tef_kcal, walk_burn_kcal
 
 
 def test_walk_burn_kcal():
     assert walk_burn_kcal(10000, 72) == 360
 
 
-def test_suggest_targets_male():
-    from datetime import date
-
-    result = suggest_targets(72, 175, date(1990, 1, 1), "male", 1.375, date(2026, 6, 13))
-    assert result["kcal"] >= 1200
-    assert result["protein_g"] >= 72 * 1.6
+def test_katch_mcardle_bmr():
+    assert katch_mcardle_bmr(58.2) == int(370 + 21.6 * 58.2)
 
 
-def test_bmr_mifflin_st_jeor():
-    from datetime import date
-
-    from app.services.calculations import age_from_birth, bmr_kcal
-
-    age = age_from_birth(date(1990, 1, 15), date(2026, 6, 13))
-    assert bmr_kcal(72, 175, age, "male") == int(10 * 72 + 6.25 * 175 - 5 * age + 5)
+def test_tef_kcal():
+    assert tef_kcal(1800, 0.10) == 180
 
 
-def test_health_sync_and_dashboard(client):
-    profile = {
-        "height_cm": 175,
-        "birth_date": "1990-01-15",
-        "sex": "male",
-        "activity_factor": 1.375,
-        "current_weight_kg": 72,
-        "setup_completed": True,
-    }
-    r = client.put("/api/v1/profile", json=profile)
-    assert r.status_code == 200
-
-    r = client.post("/api/v1/sync/health", json={"date": "2026-06-13", "steps": 8000})
-    assert r.status_code == 200
-    assert r.json()["steps"] == 8000
-
-    r = client.post("/api/v1/sync/health", json={"date": "2026-06-13", "steps": 9000})
-    assert r.status_code == 200
-
-    r = client.post(
-        "/api/v1/sync/health",
-        json={"date": "2026-06-13", "steps": 9100, "weight_kg": None},
-    )
-    assert r.status_code == 200
-    assert r.json()["weight_logged"] is False
-
-    r = client.post(
-        "/api/v1/sync/health",
-        json={"date": "2026-06-13", "steps": 9200, "weight_kg": ""},
-    )
-    assert r.status_code == 200
-    assert r.json()["weight_logged"] is False
-
-    r = client.get("/api/v1/dashboard/today", params={"date": "2026-06-13"})
-    assert r.status_code == 200
-    data = r.json()
-    assert data["steps"] == 9200
-    assert data["burn"]["walk_kcal"] > 0
-
-
-def test_health_sync_body_composition(client):
-    client.put(
+def _setup_profile(client):
+    return client.put(
         "/api/v1/profile",
         json={
             "height_cm": 175,
             "birth_date": "1990-01-15",
             "sex": "male",
-            "activity_factor": 1.375,
             "current_weight_kg": 72,
+            "neat_kcal": 200,
+            "tef_rate": 0.10,
             "setup_completed": True,
         },
     )
+
+
+def test_health_sync_and_dashboard_top(client):
+    assert _setup_profile(client).status_code == 200
+
+    r = client.post("/api/v1/sync/health", json={"date": "2026-06-13", "steps": 8000})
+    assert r.status_code == 200
+    assert r.json()["steps"] == 8000
+
+    r = client.post("/api/v1/sync/health", json={"date": "2026-06-13", "steps": 9200})
+    assert r.status_code == 200
+
+    r = client.get("/api/v1/dashboard/top", params={"date": "2026-06-13"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["cards"]["steps"] == 9200
+    assert data["cards"]["exercise_kcal"] > 0
+    assert data["bmr_status"] == "lbm_missing"
+    assert data["balance"]["computable"] is False
+    assert data["balance"]["value"] is None
+
+
+def test_balance_with_lbm(client):
+    _setup_profile(client)
+    client.post(
+        "/api/v1/sync/health",
+        json={
+            "date": "2026-06-13",
+            "steps": 5000,
+            "weight_kg": 72,
+            "bmi": 23.5,
+            "lbm_kg": 58.2,
+            "body_fat_pct": 19.2,
+        },
+    )
+
+    dash = client.get("/api/v1/dashboard/top", params={"date": "2026-06-13"}).json()
+    assert dash["bmr_status"] == "ok"
+    assert dash["cards"]["lbm_kg"] == 58.2
+    assert dash["balance"]["computable"] is True
+    b = dash["balance"]["breakdown"]
+    expected = b["intake_kcal"] - b["bmr_kcal"] - b["neat_kcal"] - b["exercise_kcal"] - b["tef_kcal"]
+    assert dash["balance"]["value"] == expected
+
+
+def test_health_sync_body_composition(client):
+    _setup_profile(client)
     r = client.post(
         "/api/v1/sync/health",
         json={
@@ -87,31 +86,16 @@ def test_health_sync_body_composition(client):
         },
     )
     assert r.status_code == 200
-    assert r.json()["weight_logged"] is True
+    assert r.json()["body_composition_logged"] is True
 
     weight = client.get("/api/v1/weights").json()[0]
     assert weight["bmi"] == 23.5
     assert weight["lbm_kg"] == 58.2
     assert weight["body_fat_pct"] == 19.2
 
-    dash = client.get("/api/v1/dashboard/today", params={"date": "2026-06-13"}).json()
-    assert dash["bmi"] == 23.5
-    assert dash["lbm_kg"] == 58.2
-    assert dash["body_fat_pct"] == 19.2
-
 
 def test_health_sync_date_only_and_partial(client):
-    client.put(
-        "/api/v1/profile",
-        json={
-            "height_cm": 175,
-            "birth_date": "1990-01-15",
-            "sex": "male",
-            "activity_factor": 1.375,
-            "current_weight_kg": 72,
-            "setup_completed": True,
-        },
-    )
+    _setup_profile(client)
 
     r = client.post("/api/v1/sync/health", json={"date": "2026-06-14"})
     assert r.status_code == 200
@@ -138,16 +122,10 @@ def test_health_sync_date_only_and_partial(client):
 
 
 def test_meal_preset_flow(client):
-    client.put(
-        "/api/v1/profile",
-        json={
-            "height_cm": 175,
-            "birth_date": "1990-01-15",
-            "sex": "male",
-            "activity_factor": 1.375,
-            "current_weight_kg": 72,
-            "setup_completed": True,
-        },
+    _setup_profile(client)
+    client.post(
+        "/api/v1/sync/health",
+        json={"date": "2026-06-13", "lbm_kg": 58.2, "weight_kg": 72},
     )
     preset = client.post(
         "/api/v1/food-presets",
@@ -165,22 +143,12 @@ def test_meal_preset_flow(client):
             "food_preset_id": preset["id"],
         },
     )
-    dash = client.get("/api/v1/dashboard/today", params={"date": "2026-06-13"}).json()
-    assert dash["intake"]["kcal"] == 188
+    dash = client.get("/api/v1/dashboard/top", params={"date": "2026-06-13"}).json()
+    assert dash["cards"]["intake_kcal"] == 188
 
 
-def test_delete_meal_walk_and_weight(client):
-    client.put(
-        "/api/v1/profile",
-        json={
-            "height_cm": 175,
-            "birth_date": "1990-01-15",
-            "sex": "male",
-            "activity_factor": 1.375,
-            "current_weight_kg": 72,
-            "setup_completed": True,
-        },
-    )
+def test_delete_meal_and_weight(client):
+    _setup_profile(client)
     meal = client.post(
         "/api/v1/meals",
         json={
@@ -194,8 +162,53 @@ def test_delete_meal_walk_and_weight(client):
     ).json()
     assert client.delete(f"/api/v1/meals/{meal['id']}").status_code == 204
 
-    walk = client.post("/api/v1/walks", json={"discovery_note": "test"}).json()
-    assert client.delete(f"/api/v1/walks/{walk['id']}").status_code == 204
-
     weight = client.post("/api/v1/weights", json={"weight_kg": 71.5}).json()
     assert client.delete(f"/api/v1/weights/{weight['id']}").status_code == 204
+
+
+def test_walk_api_removed(client):
+    assert client.get("/api/v1/walks").status_code == 404
+    assert client.get("/api/v1/dashboard/today").status_code == 404
+    assert client.get("/api/v1/summary/week").status_code == 404
+
+
+def test_dashboard_history(client):
+    _setup_profile(client)
+    client.post(
+        "/api/v1/sync/health",
+        json={"date": "2026-06-13", "steps": 8000, "lbm_kg": 58.2, "weight_kg": 72},
+    )
+    r = client.get(
+        "/api/v1/dashboard/history/steps",
+        params={"period": "day", "anchor_date": "2026-06-13"},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["metric"] == "steps"
+    assert data["period"] == "day"
+    assert len(data["points"]) == 14
+
+
+def test_neat_tef_affects_balance(client):
+    _setup_profile(client)
+    client.post(
+        "/api/v1/sync/health",
+        json={"date": "2026-06-13", "lbm_kg": 58.2, "weight_kg": 72},
+    )
+    before = client.get("/api/v1/dashboard/top", params={"date": "2026-06-13"}).json()
+
+    client.put(
+        "/api/v1/profile",
+        json={
+            "height_cm": 175,
+            "birth_date": "1990-01-15",
+            "sex": "male",
+            "current_weight_kg": 72,
+            "neat_kcal": 300,
+            "tef_rate": 0.15,
+            "setup_completed": True,
+        },
+    )
+    after = client.get("/api/v1/dashboard/top", params={"date": "2026-06-13"}).json()
+    assert after["balance"]["breakdown"]["neat_kcal"] == 300
+    assert after["balance"]["value"] != before["balance"]["value"]

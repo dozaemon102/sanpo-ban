@@ -1,15 +1,16 @@
 import type {
-  DashboardToday,
+  DashboardHistory,
+  DashboardTop,
   FoodLookupResponse,
   FoodPreset,
+  HistoryMetric,
+  HistoryPeriod,
   MealCreate,
   MealLog,
   Profile,
   ProfileUpdate,
   StrengthLog,
   TreadmillLog,
-  WalkSession,
-  WeekSummary,
   WeightLog,
 } from "../types";
 
@@ -32,8 +33,13 @@ export const api = {
   getProfile: () => request<Profile>("/profile"),
   putProfile: (body: ProfileUpdate) =>
     request<Profile>("/profile", { method: "PUT", body: JSON.stringify(body) }),
-  getDashboard: (date?: string) =>
-    request<DashboardToday>(`/dashboard/today${date ? `?date=${date}` : ""}`),
+  getDashboardTop: (date?: string) =>
+    request<DashboardTop>(`/dashboard/top${date ? `?date=${date}` : ""}`),
+  getDashboardHistory: (metric: HistoryMetric, period: HistoryPeriod, anchorDate?: string) => {
+    const params = new URLSearchParams({ period });
+    if (anchorDate) params.set("anchor_date", anchorDate);
+    return request<DashboardHistory>(`/dashboard/history/${metric}?${params}`);
+  },
   getPresets: () => request<FoodPreset[]>("/food-presets"),
   lookupBarcode: (barcode: string) => request<FoodLookupResponse>(`/foods/barcode/${barcode}`),
   getMeals: (date: string) => request<MealLog[]>(`/meals?date=${date}`),
@@ -53,19 +59,6 @@ export const api = {
         food_preset_id: preset.id,
       }),
     }),
-  recordWalk: (note?: string) =>
-    request("/walks", {
-      method: "POST",
-      body: JSON.stringify({ discovery_note: note || null }),
-    }),
-  getWalks: (limit = 30) => request<WalkSession[]>(`/walks?limit=${limit}`),
-  deleteWalk: (walkId: number) => request<void>(`/walks/${walkId}`, { method: "DELETE" }),
-  syncHealth: (date: string, steps: number, weight_kg?: number) =>
-    request("/sync/health", {
-      method: "POST",
-      body: JSON.stringify({ date, steps, weight_kg }),
-    }),
-  getWeekSummary: () => request<WeekSummary>("/summary/week"),
   getWeights: (limit = 30) => request<WeightLog[]>(`/weights?limit=${limit}`),
   deleteWeight: (weightId: number) => request<void>(`/weights/${weightId}`, { method: "DELETE" }),
   getTreadmillLogs: (date?: string) =>
@@ -91,5 +84,3 @@ export const api = {
       "/exercises/strength/templates"
     ),
 };
-
-export type { DashboardToday, Profile, WeekSummary };

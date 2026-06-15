@@ -1,8 +1,8 @@
 {
-  "name": "散歩判",
-  "short_name": "散歩判",
+  "name": "健康管理",
+  "short_name": "健康管理",
   "display": "standalone",
-  "theme_color": "#5645d4",
-  "background_color": "#f6f5f4",
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff",
   "start_url": "/"
 }

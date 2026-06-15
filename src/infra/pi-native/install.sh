@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# 散歩判 — Raspberry Pi ネイティブセットアップ（Docker 不要）
+# 健康管理（kenko-kanri）— Raspberry Pi ネイティブセットアップ
 set -euo pipefail
 
 APP_USER="${APP_USER:-$USER}"
-APP_DIR="${APP_DIR:-/home/$APP_USER/sanpo-ban}"
-REPO_SRC="${REPO_SRC:-}"  # 未指定なら現在のリポジトリルート（install 実行位置から推定）
+APP_DIR="${APP_DIR:-/home/$APP_USER/kenko-kanri}"
+REPO_SRC="${REPO_SRC:-}"
 MYSQL_ROOT_PASS="${MYSQL_ROOT_PASS:-}"
-DB_NAME="sanpo_ban"
+DB_NAME="kenko_kanri"
 DB_USER="sanpo"
 DB_PASS="${DB_PASS:-sanpo}"
 
-echo "==> 散歩判 Pi セットアップ"
+echo "==> 健康管理 Pi セットアップ"
 echo "    APP_DIR=$APP_DIR"
 
 if [[ -z "$REPO_SRC" ]]; then
@@ -76,9 +76,9 @@ npm ci 2>/dev/null || npm install
 npm run build
 
 UV_BIN="$(command -v uv)"
-sudo tee /etc/systemd/system/sanpo-ban.service >/dev/null <<EOF
+sudo tee /etc/systemd/system/kenko-kanri.service >/dev/null <<EOF
 [Unit]
-Description=Sanpo-ban diet dashboard API
+Description=Kenko-kanri health dashboard API
 After=mysql.service
 Requires=mysql.service
 
@@ -96,8 +96,8 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable sanpo-ban
-sudo systemctl restart sanpo-ban
+sudo systemctl enable kenko-kanri
+sudo systemctl restart kenko-kanri
 
 PI_IP=$(hostname -I | awk '{print $1}')
 echo ""
@@ -105,6 +105,6 @@ echo "============================================"
 echo " セットアップ完了"
 echo " ブラウザ: http://${PI_IP}:8080"
 echo " iPhone:   http://${PI_IP}:8080/api/v1/sync/health"
-echo " 状態確認: sudo systemctl status sanpo-ban"
-echo " ログ:     journalctl -u sanpo-ban -f"
+echo " 状態確認: sudo systemctl status kenko-kanri"
+echo " ログ:     journalctl -u kenko-kanri -f"
 echo "============================================"

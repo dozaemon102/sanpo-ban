@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Date, DateTime, Enum, Integer, Numeric, String, Text
+from sqlalchemy import BigInteger, Date, DateTime, Enum, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -14,11 +14,8 @@ class UserProfile(Base):
     height_cm: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     birth_date: Mapped[date] = mapped_column(Date, nullable=False)
     sex: Mapped[str] = mapped_column(Enum("male", "female", name="sex_enum"), nullable=False)
-    activity_factor: Mapped[Decimal] = mapped_column(Numeric(4, 3), nullable=False, default=Decimal("1.375"))
-    target_kcal: Mapped[int] = mapped_column(Integer, nullable=False)
-    target_protein_g: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
-    target_fat_g: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
-    target_carbs_g: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    neat_kcal: Mapped[int] = mapped_column(Integer, nullable=False, default=200)
+    tef_rate: Mapped[Decimal] = mapped_column(Numeric(4, 3), nullable=False, default=Decimal("0.100"))
     initial_weight_kg: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     setup_completed: Mapped[bool] = mapped_column(nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
@@ -74,14 +71,6 @@ class WeightLog(Base):
     body_fat_pct: Mapped[Decimal | None] = mapped_column(Numeric(4, 1), nullable=True)
     source: Mapped[str] = mapped_column(Enum("manual", "shortcuts", name="weight_source_enum"), nullable=False)
     logged_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
-
-
-class WalkSession(Base):
-    __tablename__ = "walk_sessions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    walked_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
-    discovery_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class TreadmillLog(Base):
