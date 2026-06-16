@@ -360,8 +360,12 @@ erDiagram
 
 | 要素 | 変更 |
 |------|------|
+| バナー | 選択日の **摂取 kcal 合計**（`GET /meals` から算出） |
+| サマリー | **P / F / C 合計 g のみ**（FR-051） |
+| 収支 | **表示しない**（収支は TOP タブのみ） |
+| 日付 | 日付ストリップ（±3 日）。API は **`GET /meals?date=` のみ**（`dashboard/top` は呼ばない） |
+| 枠 | 朝食 / 昼食 / 夕食 / 間食（`meal_slot`）。各枠に「入力」 |
 | プリセット | UI ラベル **Myセット**（FR-050） |
-| PFC 表示 | 当日 **合計 g のみ**。目標・残量なし（FR-051） |
 | バーコード | v2 継続 |
 
 ### 4.3 運動
@@ -516,3 +520,4 @@ sequenceDiagram
 |------|----------|
 | 2026-06-14 | 初版作成（v3 収支・UI・DB kenko_kanri） |
 | 2026-06-16 | hotfix: log_date 日次キー、WeightLog 部分 upsert、運動 log_date、履歴 null ルール、CardHistory UI |
+| 2026-06-16 | hotfix: 食事タブから収支表示を削除（収支は TOP のみ） |
