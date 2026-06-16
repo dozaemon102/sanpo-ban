@@ -486,7 +486,7 @@ async function renderHistory(): Promise<void> {
 
 async function renderMeals(): Promise<void> {
   const date = selectedDate;
-  const [meals, dashboard] = await Promise.all([api.getMeals(date), api.getDashboardTop(date)]);
+  const meals = await api.getMeals(date);
   const totals = meals.reduce(
     (acc, m) => ({
       protein_g: acc.protein_g + m.protein_g,
@@ -541,13 +541,6 @@ async function renderMeals(): Promise<void> {
       </section>`;
   }).join("");
 
-  const balance = dashboard.balance;
-  const balanceText = balance.computable
-    ? `${Math.round(balance.value!)} kcal`
-    : "—（LBM 未同期）";
-  const balanceClass =
-    balance.computable && balance.value != null && balance.value < 0 ? " record-summary--deficit" : "";
-
   app.innerHTML = `
     <div class="page page--record">
       <header class="record-banner">
@@ -561,10 +554,6 @@ async function renderMeals(): Promise<void> {
         </div>
       </header>
       ${renderDateStrip(date, "meals")}
-      <div class="record-summary card${balanceClass}">
-        <div class="record-summary__label">カロリー収支</div>
-        <div class="record-summary__value">${balanceText}</div>
-      </div>
       <div class="record-summary card">
         <div class="record-summary__label">P / F / C 合計</div>
         <div class="record-summary__value">${totals.protein_g.toFixed(1)} <span class="muted">/ ${totals.fat_g.toFixed(1)} / ${totals.carbs_g.toFixed(1)} g</span></div>
