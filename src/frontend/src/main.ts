@@ -9,6 +9,7 @@ import {
   weekdayJa,
 } from "./dates";
 import type {
+  DashboardHistory,
   DashboardTop,
   HistoryMetric,
   HistoryPeriod,
@@ -24,6 +25,8 @@ const app = document.getElementById("app")!;
 let currentTab: Tab = "top";
 let historyView: { metric: HistoryMetric; label: string } | null = null;
 let historyPeriod: HistoryPeriod = "day";
+const historyCache = new Map<string, DashboardHistory>();
+let historyCacheAnchor = "";
 let jstAnchor = todayJstIso();
 let selectedDate = jstAnchor;
 
@@ -125,6 +128,74 @@ const METRIC_ACCENT: Record<string, string> = {
   rose: "#f43f5e",
   sky: "#0ea5e9",
 };
+
+function historyCacheKey(metric: HistoryMetric, period: HistoryPeriod): string {
+  return `${metric}:${period}`;
+}
+
+function clearHistoryCache(): void {
+  historyCache.clear();
+  historyCacheAnchor = "";
+}
+
+async function prefetchHistory(metric: HistoryMetric, anchorDate: string): Promise<void> {
+  if (historyCacheAnchor === anchorDate && historyCache.size >= 4) return;
+  clearHistoryCache();
+  historyCacheAnchor = anchorDate;
+  const periods: HistoryPeriod[] = ["day", "week", "month", "year"];
+  const results = await Promise.all(
+    periods.map((period) => api.getDashboardHistory(metric, period, anchorDate))
+  );
+  periods.forEach((period, i) => {
+    historyCache.set(historyCacheKey(metric, period), results[i]!);
+  });
+}
+
+function paintHistoryChart(hist: DashboardHistory): void {
+  if (!historyView) return;
+  const container = document.getElementById("history-chart");
+  if (!container) return;
+  mountHistoryChart(
+    container,
+    historyView.metric,
+    hist.points,
+    historyPeriod,
+    metricAccent(historyView.metric)
+  );
+}
+
+function setHistoryPeriod(period: HistoryPeriod): void {
+  historyPeriod = period;
+  document.querySelectorAll(".segment").forEach((el) => {
+    el.classList.toggle("active", (el as HTMLElement).dataset.period === period);
+  });
+  const subtitle = document.querySelector(".page-subtitle");
+  const periodLabels: Record<HistoryPeriod, string> = {
+    day: "日",
+    week: "週",
+    month: "月",
+    year: "年",
+  };
+  if (subtitle) subtitle.textContent = `推移 · ${periodLabels[period]}`;
+
+  const cached = historyView
+    ? historyCache.get(historyCacheKey(historyView.metric, period))
+    : undefined;
+  if (cached) {
+    paintHistoryChart(cached);
+    return;
+  }
+  void (async () => {
+    if (!historyView) return;
+    const hist = await api.getDashboardHistory(
+      historyView.metric,
+      period,
+      todayJstIso()
+    );
+    historyCache.set(historyCacheKey(historyView.metric, period), hist);
+    if (historyPeriod === period) paintHistoryChart(hist);
+  })();
+}
 
 function metricAccent(metric: HistoryMetric): string {
   const card = CARD_ORDER.find((c) => c.metric === metric);
@@ -271,6 +342,7 @@ function bindTabs(): void {
   document.querySelectorAll(".tab").forEach((el) => {
     el.addEventListener("click", () => {
       historyView = null;
+      clearHistoryCache();
       currentTab = (el as HTMLElement).dataset.tab as Tab;
       render();
     });
@@ -335,18 +407,16 @@ async function renderTop(): Promise<void> {
 async function renderHistory(): Promise<void> {
   if (!historyView) return;
   const date = todayJstIso();
-  try {
-    const hist = await api.getDashboardHistory(historyView.metric, historyPeriod, date);
-    const periods: HistoryPeriod[] = ["day", "week", "month", "year"];
-    const periodLabels: Record<HistoryPeriod, string> = {
-      day: "日",
-      week: "週",
-      month: "月",
-      year: "年",
-    };
-    const accent = metricAccent(historyView.metric);
+  const periods: HistoryPeriod[] = ["day", "week", "month", "year"];
+  const periodLabels: Record<HistoryPeriod, string> = {
+    day: "日",
+    week: "週",
+    month: "月",
+    year: "年",
+  };
+  const cachedForPeriod = historyCache.get(historyCacheKey(historyView.metric, historyPeriod));
 
-    app.innerHTML = `
+  app.innerHTML = `
     <div class="page">
       <header class="page-header">
         <button type="button" class="history-back" id="history-back">← 戻る</button>
@@ -362,32 +432,28 @@ async function renderHistory(): Promise<void> {
           .join("")}
       </div>
       <div class="card history-chart-card">
-        <div id="history-chart" class="history-chart"></div>
+        <div id="history-chart" class="history-chart">${cachedForPeriod ? "" : '<p class="muted history-loading">読み込み中…</p>'}</div>
       </div>
     </div>
     ${renderTabs()}
   `;
 
-    bindTabs();
-    document.getElementById("history-back")!.addEventListener("click", () => {
-      historyView = null;
-      void render();
-    });
+  bindTabs();
+  document.getElementById("history-back")!.addEventListener("click", () => {
+    historyView = null;
+    clearHistoryCache();
+    void render();
+  });
 
-    mountHistoryChart(
-      document.getElementById("history-chart")!,
-      historyView.metric,
-      hist.points,
-      historyPeriod,
-      accent
-    );
-
-    document.querySelectorAll(".segment").forEach((el) => {
-      el.addEventListener("click", () => {
-        historyPeriod = (el as HTMLElement).dataset.period as HistoryPeriod;
-        void renderHistory();
-      });
+  document.querySelectorAll(".segment").forEach((el) => {
+    el.addEventListener("click", () => {
+      setHistoryPeriod((el as HTMLElement).dataset.period as HistoryPeriod);
     });
+  });
+
+  try {
+    await prefetchHistory(historyView.metric, date);
+    paintHistoryChart(historyCache.get(historyCacheKey(historyView.metric, historyPeriod))!);
   } catch (err) {
     app.innerHTML = `
       <div class="page">
@@ -401,6 +467,7 @@ async function renderHistory(): Promise<void> {
     bindTabs();
     document.getElementById("history-back")!.addEventListener("click", () => {
       historyView = null;
+      clearHistoryCache();
       void render();
     });
   }

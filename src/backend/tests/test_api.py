@@ -392,6 +392,52 @@ def test_balance_history_updates_with_past_meals_and_lbm_fallback(client):
     assert by_label2["2026-06-10"] != by_label["2026-06-10"]
 
 
+def test_balance_history_null_without_activity(client):
+    _setup_profile(client)
+    client.post(
+        "/api/v1/sync/health",
+        json={"date": "2026-06-15", "lbm_kg": 58.2, "weight_kg": 72, "steps": 8000},
+    )
+    client.post(
+        "/api/v1/meals",
+        json={
+            "log_date": "2026-06-15",
+            "meal_slot": "lunch",
+            "name": "test",
+            "kcal": 500,
+            "protein_g": 20,
+            "fat_g": 10,
+            "carbs_g": 60,
+        },
+    )
+
+    r = client.get(
+        "/api/v1/dashboard/history/balance",
+        params={"period": "day", "anchor_date": "2026-06-15"},
+    )
+    assert r.status_code == 200
+    by_label = {p["label"]: p["value"] for p in r.json()["points"]}
+    assert by_label["2026-06-14"] is None
+    assert by_label["2026-06-15"] is not None
+
+
+def test_bmr_history_no_lbm_carry_forward(client):
+    _setup_profile(client)
+    client.post(
+        "/api/v1/sync/health",
+        json={"date": "2026-06-13", "lbm_kg": 58.2, "weight_kg": 72},
+    )
+
+    r = client.get(
+        "/api/v1/dashboard/history/bmr",
+        params={"period": "day", "anchor_date": "2026-06-15"},
+    )
+    assert r.status_code == 200
+    by_label = {p["label"]: p["value"] for p in r.json()["points"]}
+    assert by_label["2026-06-13"] is not None
+    assert by_label["2026-06-14"] is None
+
+
 def test_exercise_history_includes_treadmill_without_steps(client):
     _setup_profile(client)
     client.post("/api/v1/exercises/treadmill", json={"log_date": "2026-06-12", "minutes": 20})

@@ -72,8 +72,13 @@ function renderChart(
   const barW = Math.min(slot * 0.55, 22);
 
   const defined = points.filter((p) => p.value != null).map((p) => p.value as number);
+  const signedMetric = metric === "balance";
   let yMin = defined.length ? Math.min(...defined) : 0;
   let yMax = defined.length ? Math.max(...defined) : 1;
+  if (signedMetric) {
+    yMin = Math.min(yMin, 0);
+    yMax = Math.max(yMax, 0);
+  }
   if (yMin === yMax) {
     const spread = Math.max(Math.abs(yMin) * 0.15, 1);
     yMin -= spread;
@@ -86,6 +91,7 @@ function renderChart(
 
   const xAt = (i: number) => pad.left + slot * i + slot / 2;
   const yAt = (v: number) => pad.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+  const yZero = yAt(0);
 
   const hits: ChartPoint[] = [];
   const bars: string[] = [];
@@ -93,9 +99,16 @@ function renderChart(
   points.forEach((pt, i) => {
     const x = xAt(i);
     if (pt.value != null) {
-      const y = yAt(pt.value);
-      const h = Math.max(pad.top + plotH - y, 3);
-      const barY = pad.top + plotH - h;
+      const yVal = yAt(pt.value);
+      let barY: number;
+      let h: number;
+      if (signedMetric) {
+        barY = Math.min(yVal, yZero);
+        h = Math.max(Math.abs(yVal - yZero), 3);
+      } else {
+        h = Math.max(pad.top + plotH - yVal, 3);
+        barY = pad.top + plotH - h;
+      }
       const bx = x - barW / 2;
       bars.push(
         `<rect class="chart-bar" data-idx="${i}" x="${bx.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${accent}" opacity="0.88"/>`
@@ -113,7 +126,9 @@ function renderChart(
     }
   });
 
-  const yTicks = [yMin, (yMin + yMax) / 2, yMax];
+  const yTicks = signedMetric
+    ? [...new Set([yMin, 0, yMax])].sort((a, b) => a - b)
+    : [yMin, (yMin + yMax) / 2, yMax];
   const gridLines = yTicks
     .map((v) => {
       const y = yAt(v);
@@ -128,6 +143,11 @@ function renderChart(
       return `<text x="${pad.left - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="10">${text}</text>`;
     })
     .join("");
+
+  const zeroLine =
+    signedMetric && defined.length
+      ? `<line x1="${pad.left}" y1="${yZero.toFixed(1)}" x2="${width - pad.right}" y2="${yZero.toFixed(1)}" stroke="#c4c9d4" stroke-width="1.5"/>`
+      : "";
 
   const xLabels = points
     .map((pt, i) => {
@@ -160,6 +180,7 @@ function renderChart(
     <div class="history-chart-wrap">
       <svg class="history-chart-svg" viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="推移グラフ" overflow="visible">
         ${gridLines}
+        ${zeroLine}
         ${bars.join("")}
         ${hitAreas}
         ${yLabels}
