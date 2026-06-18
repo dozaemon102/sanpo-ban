@@ -5,8 +5,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.routes import router
+from app.core.errors import AppError
 
 APP_VERSION = "3.0.1"
 
@@ -22,10 +24,35 @@ app.add_middleware(
 
 app.include_router(router)
 
-NO_STORE_HEADERS = {"Cache-Control": "no-store, must-revalidate"}
+NO_STORE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+class CacheControlMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path in ("/", "/manifest.json") or path.endswith(".html"):
+            for key, value in NO_STORE_HEADERS.items():
+                response.headers[key] = value
+        elif path.startswith("/assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
+app.add_middleware(CacheControlMiddleware)
 
 frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 assets_dir = frontend_dist / "assets"
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
+    content = exc.detail if isinstance(exc.detail, dict) else {"error": {"message": str(exc.detail)}}
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 @app.exception_handler(RequestValidationError)
