@@ -83,10 +83,10 @@ function renderChart(
 
   const defined = points.filter((p) => p.value != null).map((p) => p.value as number);
   const signedMetric = metric === "balance";
-  let dataMin = defined.length ? Math.min(...defined) : 0;
-  let dataMax = defined.length ? Math.max(...defined) : 0;
-  // 変化率の誤認を防ぐため、全メトリクスで Y 軸は 0 を含める
-  let yMin = Math.min(dataMin, 0);
+  const dataMin = defined.length ? Math.min(...defined) : 0;
+  const dataMax = defined.length ? Math.max(...defined) : 0;
+  // 全メトリクスで Y 軸は 0 を必ず含める（変化率の誤認防止）
+  let yMin = signedMetric ? Math.min(dataMin, 0) : 0;
   let yMax = signedMetric ? Math.max(dataMax, 0) : dataMax;
   if (!defined.length) {
     yMin = 0;
@@ -152,7 +152,7 @@ function renderChart(
 
   const yTicks = signedMetric
     ? [...new Set([yMin, 0, yMax])].sort((a, b) => a - b)
-    : [...new Set([0, yMax])].sort((a, b) => a - b);
+    : [...new Set([0, Math.round((yMax / 2) * 10) / 10, yMax])].sort((a, b) => a - b);
   const gridLines = yTicks
     .map((v) => {
       const y = yAt(v);
@@ -169,7 +169,7 @@ function renderChart(
     .join("");
 
   const zeroLine =
-    signedMetric && defined.length
+    defined.length && yMin <= 0 && yMax >= 0
       ? `<line x1="${pad.left}" y1="${yZero.toFixed(1)}" x2="${width - pad.right}" y2="${yZero.toFixed(1)}" stroke="#c4c9d4" stroke-width="1.5"/>`
       : "";
 

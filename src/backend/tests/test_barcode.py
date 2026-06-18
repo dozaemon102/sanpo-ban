@@ -82,7 +82,23 @@ def test_barcode_lookup_api(client):
     with patch("app.api.routes.lookup_barcode", new=AsyncMock(return_value=mock_result)):
         r = client.get("/api/v1/foods/barcode/4901234567890")
         assert r.status_code == 200
+        assert "application/json" in r.headers.get("content-type", "")
         assert r.json()["name"] == "テスト"
+
+
+def test_barcode_api_not_html(client):
+    """Static 配信が API を HTML で上書きしないこと"""
+    r = client.get("/api/v1/foods/barcode/4901234567890")
+    assert "text/html" not in r.headers.get("content-type", "")
+    assert r.status_code in (200, 404, 502)
+
+
+def test_app_meta(client):
+    r = client.get("/api/v1/meta")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["app"] == "kenko-kanri"
+    assert "version" in body
 
     meal = client.post(
         "/api/v1/meals",
