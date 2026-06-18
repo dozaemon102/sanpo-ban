@@ -2,6 +2,7 @@ import "./styles/notion.css";
 import { api } from "./api/client";
 import { openMealEntryFlow } from "./meal-entry-flow";
 import { mountHistoryChart } from "./history-chart";
+import { WEB_BUILD } from "./version";
 import {
   addDaysIso,
   formatMonthJa,
@@ -751,9 +752,14 @@ async function renderSettings(existing: Profile | null, isSetup = false): Promis
     .then((r) => (r.ok ? r.json() : null))
     .then((meta: { version?: string } | null) => {
       const el = document.getElementById("app-version");
-      if (el && meta?.version) el.textContent = `API ${meta.version}`;
+      if (!el) return;
+      const apiVer = meta?.version ? `API ${meta.version}` : "API —";
+      el.textContent = `Web ${WEB_BUILD} · ${apiVer}`;
     })
-    .catch(() => {});
+    .catch(() => {
+      const el = document.getElementById("app-version");
+      if (el) el.textContent = `Web ${WEB_BUILD} · API —`;
+    });
   document.getElementById("settings-form")!.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target as HTMLFormElement);

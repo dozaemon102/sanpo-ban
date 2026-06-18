@@ -11,6 +11,9 @@ cd "$APP_DIR"
 git pull origin main
 
 cd src/backend
+if [[ ! -f .env ]]; then
+  echo "WARN: .env がありません。install.sh を実行するか .env を作成してください。"
+fi
 uv sync
 uv run alembic upgrade head
 
@@ -18,17 +21,22 @@ cd ../frontend
 npm ci 2>/dev/null || npm install
 npm run build
 
-echo "==> 再起動: $SERVICE"
-if systemctl list-unit-files | grep -q "^${SERVICE}.service"; then
+restart_service() {
+  echo "==> 再起動: $SERVICE"
   sudo systemctl restart "$SERVICE"
-elif systemctl list-unit-files | grep -q "^sanpo-ban.service"; then
+}
+
+if systemctl list-unit-files 2>/dev/null | grep -q "^${SERVICE}.service"; then
+  restart_service
+elif systemctl list-unit-files 2>/dev/null | grep -q "^sanpo-ban.service"; then
   echo "WARN: kenko-kanri.service がありません。旧 sanpo-ban を再起動します。"
-  sudo systemctl restart sanpo-ban
   SERVICE=sanpo-ban
+  restart_service
 else
-  echo "ERROR: systemd サービスが見つかりません。"
-  echo "  sudo systemctl list-unit-files | grep -E 'kenko|sanpo'"
-  exit 1
+  echo "WARN: systemd サービス未登録。install-service.sh を実行します。"
+  chmod +x "$APP_DIR/src/infra/pi-native/install-service.sh"
+  "$APP_DIR/src/infra/pi-native/install-service.sh"
+  restart_service
 fi
 
 PI_IP=$(hostname -I | awk '{print $1}')

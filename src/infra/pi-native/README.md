@@ -45,6 +45,14 @@ chmod +x src/infra/pi-native/install.sh
 MYSQL_ROOT_PASS='your-root-password' ./src/infra/pi-native/install.sh
 ```
 
+**systemd のみ後から登録**（コードは既に `~/kenko-kanri` にある場合）:
+
+```bash
+chmod +x src/infra/pi-native/install-service.sh
+./src/infra/pi-native/install-service.sh
+sudo systemctl start kenko-kanri
+```
+
 DB パスワードを変える場合:
 
 ```bash
@@ -165,7 +173,8 @@ sudo systemctl restart sanpo-ban
 |------|------|
 | 8080 に繋がらない | `sudo systemctl status kenko-kanri`（旧名 `sanpo-ban` も確認） / ファイアウォール |
 | バーコード検索不可 | `curl -sI http://localhost:8080/api/v1/foods/barcode/4901234567890` が `application/json` か確認。`text/html` なら `npm run build` 後に再起動 |
-| グラフが古い | ブラウザ強制再読み込み。設定タブに `API 3.0.1` 表示を確認 |
+| グラフが古い | ブラウザ強制再読み込み。設定タブに `Web 3.0.1-2 · API 3.0.1` 表示を確認 |
+| Tailscale から古い UI | **スマホの PWA を削除**して再追加。Safari のサイトデータ削除。Pi で `curl -s http://\$(tailscale ip -4):8080/ \| grep assets` が新しい JS 名か確認 |
 | 502 / DB エラー | `sudo systemctl status mysql` / `.env` の DATABASE_URL |
 | iPhone から POST 失敗 | 同一 Wi‑Fi か、URL が Pi の IP か、ローカルネットワーク許可 |
 

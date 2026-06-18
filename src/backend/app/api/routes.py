@@ -52,7 +52,7 @@ router = APIRouter(prefix="/api/v1")
 
 @router.get("/meta")
 def app_meta() -> dict[str, str]:
-    return {"app": "kenko-kanri", "version": "3.0.1", "frontend": "vite"}
+    return {"app": "kenko-kanri", "version": "3.0.1", "frontend": "vite", "web_build": "3.0.1-2"}
 
 DEFAULT_NEAT = 180
 DEFAULT_TEF = Decimal("0.100")
