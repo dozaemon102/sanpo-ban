@@ -27,6 +27,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       signal: controller.signal,
       ...init,
     });
+    if (res.status === 204 || res.status === 205) return undefined as T;
     const contentType = res.headers.get("content-type") ?? "";
     if (!contentType.includes("application/json")) {
       throw new Error(
@@ -52,7 +53,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       }
       throw new Error(res.statusText);
     }
-    if (res.status === 204) return undefined as T;
     return res.json();
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
