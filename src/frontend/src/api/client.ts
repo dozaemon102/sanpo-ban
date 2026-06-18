@@ -16,32 +16,51 @@ import type {
 } from "../types";
 
 const BASE = "/api/v1";
+const REQUEST_TIMEOUT_MS = 15_000;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...init?.headers },
-    ...init,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    const message = body?.error?.message;
-    if (typeof message === "string" && message.length > 0) {
-      throw new Error(message);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: { "Content-Type": "application/json", ...init?.headers },
+      signal: controller.signal,
+      ...init,
+    });
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      throw new Error(
+        `API が JSON 以外を返しました（${res.status}）。ページを再読み込みするか、サービスを再起動してください。`
+      );
     }
-    if (Array.isArray(body?.detail)) {
-      const fields = body.detail
-        .map((item: { loc?: unknown[]; msg?: string }) => {
-          const field = item.loc?.slice(-1)[0];
-          return field ? `${field}: ${item.msg ?? "invalid"}` : item.msg;
-        })
-        .filter(Boolean)
-        .join("; ");
-      if (fields) throw new Error(fields);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const message = body?.error?.message;
+      if (typeof message === "string" && message.length > 0) {
+        throw new Error(message);
+      }
+      if (Array.isArray(body?.detail)) {
+        const fields = body.detail
+          .map((item: { loc?: unknown[]; msg?: string }) => {
+            const field = item.loc?.slice(-1)[0];
+            return field ? `${field}: ${item.msg ?? "invalid"}` : item.msg;
+          })
+          .filter(Boolean)
+          .join("; ");
+        if (fields) throw new Error(fields);
+      }
+      throw new Error(res.statusText);
     }
-    throw new Error(res.statusText);
+    if (res.status === 204) return undefined as T;
+    return res.json();
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("リクエストがタイムアウトしました。ネットワークを確認してください。");
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  if (res.status === 204) return undefined as T;
-  return res.json();
 }
 
 export const api = {
@@ -60,7 +79,8 @@ export const api = {
     request<FoodPreset>("/food-presets", { method: "POST", body: JSON.stringify(body) }),
   deletePreset: (presetId: number) =>
     request<void>(`/food-presets/${presetId}`, { method: "DELETE" }),
-  lookupBarcode: (barcode: string) => request<FoodLookupResponse>(`/foods/barcode/${barcode}`),
+  lookupBarcode: (barcode: string) =>
+    request<FoodLookupResponse>(`/foods/barcode/${encodeURIComponent(barcode)}`),
   getMeals: (date: string) => request<MealLog[]>(`/meals?date=${date}`),
   deleteMeal: (mealId: number) => request<void>(`/meals/${mealId}`, { method: "DELETE" }),
   addMeal: (body: MealCreate) =>

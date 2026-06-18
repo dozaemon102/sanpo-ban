@@ -49,6 +49,11 @@ from app.services.weight_log_service import upsert_weight_day
 
 router = APIRouter(prefix="/api/v1")
 
+
+@router.get("/meta")
+def app_meta() -> dict[str, str]:
+    return {"app": "kenko-kanri", "version": "3.0.1", "frontend": "vite"}
+
 DEFAULT_NEAT = 180
 DEFAULT_TEF = Decimal("0.100")
 

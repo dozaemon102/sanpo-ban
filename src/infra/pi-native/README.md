@@ -107,10 +107,39 @@ Pi Imager で **USB SSD から OS 起動**（Pi 4/5 対応）。以降 SD は使
 ## 6. 日常操作
 
 ```bash
+# コード更新（推奨）
+chmod +x src/infra/pi-native/update.sh
+./src/infra/pi-native/update.sh
+
+# 手動の場合
+sudo systemctl restart kenko-kanri
+```
+
+**サービス名:** 新規インストールは `kenko-kanri`。旧環境は `sanpo-ban` のままのことがあります。
+
+```bash
+# どちらが動いているか確認
+sudo systemctl status kenko-kanri
+sudo systemctl status sanpo-ban
+```
+
+**デプロイ確認:**
+
+```bash
+curl -s http://localhost:8080/api/v1/meta
+# {"app":"kenko-kanri","version":"3.0.1",...}
+
+curl -sI http://localhost:8080/api/v1/foods/barcode/4901234567890 | grep -i content-type
+# application/json であること（text/html なら API が壊れている）
+```
+
+設定タブ下部に `API 3.0.1` と表示されれば新バージョンです。
+
+```bash
 # 起動 / 停止 / 再起動
-sudo systemctl start sanpo-ban
-sudo systemctl stop sanpo-ban
-sudo systemctl restart sanpo-ban
+sudo systemctl start kenko-kanri
+sudo systemctl stop kenko-kanri
+sudo systemctl restart kenko-kanri
 
 # ログ
 journalctl -u sanpo-ban -f
@@ -134,7 +163,9 @@ sudo systemctl restart sanpo-ban
 
 | 症状 | 対処 |
 |------|------|
-| 8080 に繋がらない | `sudo systemctl status sanpo-ban` / ファイアウォール |
+| 8080 に繋がらない | `sudo systemctl status kenko-kanri`（旧名 `sanpo-ban` も確認） / ファイアウォール |
+| バーコード検索不可 | `curl -sI http://localhost:8080/api/v1/foods/barcode/4901234567890` が `application/json` か確認。`text/html` なら `npm run build` 後に再起動 |
+| グラフが古い | ブラウザ強制再読み込み。設定タブに `API 3.0.1` 表示を確認 |
 | 502 / DB エラー | `sudo systemctl status mysql` / `.env` の DATABASE_URL |
 | iPhone から POST 失敗 | 同一 Wi‑Fi か、URL が Pi の IP か、ローカルネットワーク許可 |
 

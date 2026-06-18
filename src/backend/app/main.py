@@ -1,14 +1,16 @@
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 
-app = FastAPI(title="Kenko-kanri API", version="3.0.0")
+APP_VERSION = "3.0.1"
+
+app = FastAPI(title="Kenko-kanri API", version=APP_VERSION)
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,6 +22,11 @@ app.add_middleware(
 
 app.include_router(router)
 
+NO_STORE_HEADERS = {"Cache-Control": "no-store, must-revalidate"}
+
+frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+assets_dir = frontend_dist / "assets"
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -29,6 +36,27 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError) 
     )
 
 
-frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-if frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+def _dist_file(name: str) -> Path:
+    path = (frontend_dist / name).resolve()
+    path.relative_to(frontend_dist.resolve())
+    return path
+
+
+if assets_dir.is_dir():
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+
+@app.get("/")
+async def serve_index() -> FileResponse:
+    index = frontend_dist / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=503, detail="Frontend build not found. Run: cd src/frontend && npm run build")
+    return FileResponse(index, headers=NO_STORE_HEADERS)
+
+
+@app.get("/manifest.json")
+async def serve_manifest() -> FileResponse:
+    manifest = frontend_dist / "manifest.json"
+    if not manifest.is_file():
+        raise HTTPException(status_code=404, detail="manifest.json not found")
+    return FileResponse(manifest, headers=NO_STORE_HEADERS)

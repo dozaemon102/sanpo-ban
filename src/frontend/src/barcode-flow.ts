@@ -334,11 +334,14 @@ export function openBarcodeFlow(
     } catch (err) {
       const msg = String(err);
       const reason =
-        msg.includes("not found") || msg.includes("見つかり")
+        msg.includes("not found") || msg.includes("見つかり") || msg.includes("BARCODE_NOT_FOUND")
           ? "商品が見つかりませんでした。手入力してください。"
-          : msg.includes("unavailable") || msg.includes("利用でき")
+          : msg.includes("unavailable") || msg.includes("利用でき") || msg.includes("OFF_UNAVAILABLE")
             ? "Open Food Facts に接続できません。手入力してください。"
-            : "検索に失敗しました。手入力してください。";
+            : msg.includes("JSON 以外")
+              ? msg
+              : `検索に失敗しました: ${msg}`;
+      showScanError(reason);
       showToast(reason);
       renderManualForm(body, logDate, onDone, close, { barcode: code, reason, target, mealSlot });
     }

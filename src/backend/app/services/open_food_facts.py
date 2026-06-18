@@ -8,6 +8,10 @@ from app.core.errors import barcode_not_found, off_unavailable, validation_error
 
 BARCODE_PATTERN = re.compile(r"^[0-9]{8,14}$")
 SERVING_NOTE = "100gあたり（確認画面で編集してください）"
+OFF_HOSTS = (
+    "https://world.openfoodfacts.org",
+    "https://jp.openfoodfacts.org",
+)
 
 
 def validate_barcode(barcode: str) -> str:
@@ -75,27 +79,59 @@ def normalize_product(barcode: str, payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _off_bases() -> list[str]:
+    configured = settings.off_api_base_url.rstrip("/")
+    bases = [configured]
+    for host in OFF_HOSTS:
+        if host not in bases:
+            bases.append(host)
+    return bases
+
+
+async def _fetch_off_product(client: httpx.AsyncClient, base: str, code: str) -> httpx.Response:
+    url = f"{base.rstrip('/')}/api/v2/product/{code}.json"
+    headers = {"User-Agent": "Kenko-kanri/3.0.1 (personal use)"}
+    return await client.get(url, headers=headers)
+
+
 async def lookup_barcode(barcode: str) -> dict[str, Any]:
     code = normalize_barcode_for_lookup(barcode)
-    url = f"{settings.off_api_base_url.rstrip('/')}/api/v2/product/{code}.json"
-    headers = {"User-Agent": "Kenko-kanri/3.0 (personal use)"}
     timeout = httpx.Timeout(settings.off_timeout_seconds)
+    saw_not_found = False
+    saw_unavailable = False
+
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(url, headers=headers)
+            for base in _off_bases():
+                try:
+                    response = await _fetch_off_product(client, base, code)
+                except httpx.HTTPError:
+                    saw_unavailable = True
+                    continue
+
+                if response.status_code == 404:
+                    continue
+                if response.status_code >= 500:
+                    saw_unavailable = True
+                    continue
+                if response.status_code != 200:
+                    saw_unavailable = True
+                    continue
+
+                try:
+                    payload = response.json()
+                except ValueError:
+                    saw_unavailable = True
+                    continue
+
+                if payload.get("status") != 1:
+                    saw_not_found = True
+                    continue
+
+                return normalize_product(code, payload)
     except httpx.HTTPError:
         raise off_unavailable() from None
 
-    if response.status_code == 404:
+    if saw_not_found:
         raise barcode_not_found()
-    if response.status_code >= 500:
-        raise off_unavailable()
-    if response.status_code != 200:
-        raise off_unavailable(f"Open Food Facts returned status {response.status_code}")
-
-    try:
-        payload = response.json()
-    except ValueError:
-        raise off_unavailable() from None
-
-    return normalize_product(code, payload)
+    raise off_unavailable()

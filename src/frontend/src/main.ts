@@ -741,11 +741,19 @@ async function renderSettings(existing: Profile | null, isSetup = false): Promis
         <div class="field"><label>TEF 率 (%)</label><input name="tef_pct" type="number" step="1" value="${((p?.tef_rate ?? 0.1) * 100).toFixed(0)}" required /></div>
         <button class="btn btn-primary btn-block" type="submit">${isSetup ? "はじめる" : "保存"}</button>
         <p id="settings-error" class="error"></p>
+        <p class="muted page-footnote" id="app-version"></p>
       </form>
     </div>
     ${isSetup ? "" : renderTabs()}
   `;
   if (!isSetup) bindTabs();
+  void fetch("/api/v1/meta")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((meta: { version?: string } | null) => {
+      const el = document.getElementById("app-version");
+      if (el && meta?.version) el.textContent = `API ${meta.version}`;
+    })
+    .catch(() => {});
   document.getElementById("settings-form")!.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target as HTMLFormElement);
