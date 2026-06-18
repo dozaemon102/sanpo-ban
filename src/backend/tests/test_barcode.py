@@ -41,6 +41,24 @@ def test_normalize_product_success():
 
 
 @pytest.mark.asyncio
+async def test_lookup_barcode_http_404_is_not_found():
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+    mock_response.json.return_value = {"status": 0, "code": "4901071268374"}
+
+    mock_client = AsyncMock()
+    mock_client.get.return_value = mock_response
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
+
+    with patch("app.services.open_food_facts.httpx.AsyncClient", return_value=mock_client):
+        with pytest.raises(AppError) as exc:
+            await lookup_barcode("4901071268374")
+        assert exc.value.status_code == 404
+        assert exc.value.detail["error"]["code"] == "BARCODE_NOT_FOUND"
+
+
+@pytest.mark.asyncio
 async def test_lookup_barcode_not_found():
     mock_response = MagicMock()
     mock_response.status_code = 200

@@ -35,7 +35,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      const message = body?.error?.message;
+      const errObj = body?.error ?? body?.detail?.error;
+      const message = errObj?.message;
       if (typeof message === "string" && message.length > 0) {
         throw new Error(message);
       }

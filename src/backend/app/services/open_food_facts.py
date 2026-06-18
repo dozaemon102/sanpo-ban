@@ -110,6 +110,7 @@ async def lookup_barcode(barcode: str) -> dict[str, Any]:
                     continue
 
                 if response.status_code == 404:
+                    saw_not_found = True
                     continue
                 if response.status_code >= 500:
                     saw_unavailable = True

@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.routes import router
+from app.core.errors import AppError
 
 APP_VERSION = "3.0.1"
 
@@ -46,6 +47,12 @@ app.add_middleware(CacheControlMiddleware)
 
 frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 assets_dir = frontend_dist / "assets"
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
+    content = exc.detail if isinstance(exc.detail, dict) else {"error": {"message": str(exc.detail)}}
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 @app.exception_handler(RequestValidationError)
